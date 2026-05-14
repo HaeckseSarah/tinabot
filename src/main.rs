@@ -7,8 +7,8 @@ fn main() {
     let args = Args::parse();
     let config = Config::load(&args);
     let logger = Logger::new(
-        &config.get("tina.log.level", "warn").to_string(),
-        Some(config.get("tina.log.file", "tina.log").to_string()),
+        &config.get("TINA_LOG_LEVEL", "warn").to_string(),
+        Some(config.get("TINA_LOG_FILE", "tina.log").to_string()),
     );
 
     logger.log(LogLevel::Debug, "main", "You should not see this message");
