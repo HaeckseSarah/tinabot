@@ -1,3 +1,16 @@
+mod app;
+use app::{Config, LogLevel, Logger};
+use clap::Parser;
+
+use crate::app::Args;
 fn main() {
-    println!("Hello, world!");
+    let args = Args::parse();
+    let config = Config::load(&args);
+    let logger = Logger::new(
+        &config.get("tina.log.level", "warn").to_string(),
+        Some(config.get("tina.log.file", "tina.log").to_string()),
+    );
+
+    logger.log(LogLevel::Debug, "main", "You should not see this message");
+    logger.log(LogLevel::Warn, "main", "Hello World!");
 }
