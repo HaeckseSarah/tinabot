@@ -2,11 +2,12 @@ use std::sync::Arc;
 mod cli;
 mod config;
 mod logger;
+pub mod plugins;
 mod tina;
 
 use crate::cli::Args;
 use crate::config::Config;
-use crate::logger::{Logger};
+use crate::logger::Logger;
 use crate::tina::Kernel;
 
 use clap::Parser;
