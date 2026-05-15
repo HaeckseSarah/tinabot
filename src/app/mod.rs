@@ -1,6 +1,7 @@
-pub mod cli;
-pub mod config;
-pub mod logger;
+mod cli;
+mod config;
+mod logger;
+pub mod kernel;
 
 pub use self::cli::Args;
 pub use self::config::Config;

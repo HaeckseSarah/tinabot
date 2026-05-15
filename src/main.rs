@@ -1,16 +1,21 @@
 mod app;
-use app::{Config, LogLevel, Logger};
+use crate::app::{Args, Config, Logger};
+use crate::app::kernel::Kernel;
 use clap::Parser;
+use std::sync::Arc;
 
-use crate::app::Args;
-fn main() {
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
-    let config = Config::load(&args);
-    let logger = Logger::new(
+    let config = Arc::new(Config::load(&args));
+    let logger = Arc::new(Logger::new(
         &config.get("TINA_LOG_LEVEL", "warn").to_string(),
         Some(config.get("TINA_LOG_FILE", "tina.log").to_string()),
-    );
+    ));
 
-    logger.log(LogLevel::Debug, "main", "You should not see this message");
-    logger.log(LogLevel::Warn, "main", "Hello World!");
+    let kernel = Kernel::new(config.clone(), logger.clone());
+    kernel.init().await?;
+    kernel.run().await;
+    Ok(())
 }
