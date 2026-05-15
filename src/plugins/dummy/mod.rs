@@ -1,18 +1,18 @@
 use crate::Config;
 use crate::logger::{LogLevel, Logger};
-use crate::tina::Event;
-use crate::tina::Plugin;
+use crate::tina::{Event, Plugin};
 use async_trait::async_trait;
 use std::sync::Arc;
-use tokio::sync::OnceCell;
-use tokio::sync::mpsc;
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::sync::{OnceCell, mpsc};
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use std::io;
 pub struct DummyPlugin {
     config: OnceCell<Arc<Config>>,
     logger: OnceCell<Arc<Logger>>,
     event_tx: OnceCell<mpsc::Sender<Event>>,
+    cancel_token: CancellationToken,
 }
 
 impl DummyPlugin {
@@ -21,7 +21,7 @@ impl DummyPlugin {
             config: OnceCell::new(),
             logger: OnceCell::new(),
             event_tx: OnceCell::new(),
-            //cancel_token: CancellationToken::new(),
+            cancel_token: CancellationToken::new(),
         }
     }
 
@@ -37,7 +37,7 @@ impl DummyPlugin {
 #[async_trait]
 impl Plugin for DummyPlugin {
     fn id(&self) -> &str {
-        "dummy"
+        "dummyPlugin"
     }
 
     async fn boot(
@@ -54,37 +54,79 @@ impl Plugin for DummyPlugin {
 
         // Ab jetzt ist der Logger einsatzbereit
         self.logger()
-            .log(LogLevel::Info, "DummyPlugin", "Booted successfully.");
+            .log(LogLevel::Info, self.id(), "Booted successfully.");
 
         Ok(())
     }
 
     async fn run(&self) {
         self.logger()
-            .log(LogLevel::Info, "DummyPlugin", "Dummy plugin started.");
+            .log(LogLevel::Info, self.id(), "Dummy plugin started.");
+
+        let stdin = tokio::io::stdin();
+        let mut reader = BufReader::new(stdin);
+        let mut input = String::new();
 
         loop {
+            if self.cancel_token.is_cancelled() {
+                self.logger().log(LogLevel::Debug, self.id(), "Kill me");
+                break;
+            }
+
             println!("tina>");
-            let mut input = String::new();
+            input.clear();
 
-            io::stdin()
-                .read_line(&mut input)
-                .expect("Failed to read line");
+            tokio::select! {
+                _ = self.cancel_token.cancelled() => {
+                    self.logger().log(LogLevel::Info, self.id(), "initiatiing shutdown...");
+                    break;
+                }
 
-            let event = Event {
-                id: Uuid::new_v4(),
-                source: self.id().to_string(),
-                event_type: "onMessage".to_string(),
-                payload: serde_json::json!({"message": input.trim()}),
-                metadata: std::collections::HashMap::new(),
-            };
-            let _ = self.event_tx().send(event).await;
+                result = reader.read_line(&mut input) => {
+                    match result {
+                        Ok(0) => {
+                            break;
+                        }
+                    Ok(_) => {
+                        let trimmed = input.trim();
+                        if trimmed.is_empty() { continue; }
+                        if trimmed == "exit" {
+                            let event = Event {
+                                id: Uuid::new_v4(),
+                                source: self.id().to_string(),
+                                event_type: "killSignal".to_string(),
+                                payload: None,
+                                metadata: None,
+                            };
+
+                            let _ = self.event_tx().send(event).await;
+                            break;
+                        }
+
+                        let event = Event {
+                            id: Uuid::new_v4(),
+                            source: self.id().to_string(),
+                            event_type: "onMessage".to_string(),
+                            payload: Some(serde_json::json!({"message": input.trim()})),
+                            metadata: None,
+                        };
+
+                        let _ = self.event_tx().send(event).await;
+                        }
+                    Err(e) => {
+                        self.logger().log(LogLevel::Error, self.id(), &format!("error on reading from stdin: {}", e));
+                        break;
+                        }
+                    }
+                }
+            }
         }
     }
 
     async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error>> {
-        self.logger()
-            .log(LogLevel::Info, "DummyPlugin", "shutdown");
+        self.logger().log(LogLevel::Info, self.id(), "shutdown");
+        self.cancel_token.cancel();
+
         Ok(())
     }
 }

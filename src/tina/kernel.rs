@@ -4,10 +4,7 @@ use crate::config::Config;
 use crate::logger::{LogLevel, Logger};
 use crate::plugins::DummyPlugin;
 use std::sync::Arc;
-use tokio::sync::Mutex;
-use tokio::sync::OnceCell;
-use tokio::sync::RwLock;
-use tokio::sync::mpsc;
+use tokio::sync::{Mutex, OnceCell, RwLock, mpsc};
 
 pub struct Kernel {
     config: Arc<Config>,
@@ -84,17 +81,35 @@ impl Kernel {
 
         self.logger
             .log(LogLevel::Info, "Kernel", "Running Kernel...");
+
         loop {
             tokio::select! {
                 Some(event) = event_rx.recv() => {
-                    self.logger.log(
-                        LogLevel::Info,
-                        "Kernel",
-                        &format!("Received event: {:?}", event),
-                    );
-            }
+                    match event.event_type.as_str() {
+                        "killSignal" => {
+                            // TODO check permissions
+                            self.logger.log(
+                                LogLevel::Debug,
+                                "Kernel",
+                                &format!("Received killSignal from: {}", event.source),
+                            );
+                            break;
+                        }
+                        _ => {
+                            self.logger.log(
+                                LogLevel::Debug,
+                                "Kernel",
+                                &format!("Received event: {:?}", event),
+                            );
+                        }
+                    }
+                        }
+                        _ = tokio::signal::ctrl_c() => {
+                            self.logger.log(LogLevel::Info, "Kernel", "ctrl+c detected. Shuting down...");
+                            break; // exit main loop
+                        }
 
-                else => break,
+                        else => break,
             }
         }
 
@@ -108,7 +123,28 @@ impl Kernel {
     }
 
     pub async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error>> {
+        self.logger
+            .log(LogLevel::Info, "Kernel", "stopping all plugins...");
 
+        let plugins_read = self.plugins.read().await;
+
+        for plugin in plugins_read.iter() {
+            self.logger.log(
+                LogLevel::Info,
+                "Kernel",
+                &format!("Call shutdown() on plugin: {}", plugin.id()),
+            );
+
+            if let Err(e) = plugin.shutdown().await {
+                self.logger.log(
+                    LogLevel::Error,
+                    "Kernel",
+                    &format!("Plugin '{}' error on shutdown: {:?}", plugin.id(), e),
+                );
+            }
+        }
+
+        self.logger.log(LogLevel::Info, "Kernel", "Bye Bye ");
         Ok(())
     }
 }
