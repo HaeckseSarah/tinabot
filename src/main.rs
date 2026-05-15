@@ -1,9 +1,15 @@
-mod app;
-use crate::app::{Args, Config, Logger};
-use crate::app::kernel::Kernel;
-use clap::Parser;
 use std::sync::Arc;
+mod cli;
+mod config;
+mod logger;
+mod tina;
 
+use crate::cli::Args;
+use crate::config::Config;
+use crate::logger::{Logger};
+use crate::tina::Kernel;
+
+use clap::Parser;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

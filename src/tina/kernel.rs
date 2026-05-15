@@ -1,6 +1,6 @@
 use std::sync::Arc;
-use crate::app::Config;
-use crate::app::{Logger, LogLevel};
+use crate::config::Config;
+use crate::logger::{Logger, LogLevel};
 
 pub struct Kernel {
     config: Arc<Config>,
