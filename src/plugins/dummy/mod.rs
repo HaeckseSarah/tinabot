@@ -1,5 +1,6 @@
 use crate::Config;
 use crate::logger::{LogLevel, Logger};
+use crate::lua::LuaFunctionRegistry;
 use crate::tina::{Event, Plugin};
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -72,12 +73,23 @@ impl Plugin for DummyPlugin {
         config: Arc<Config>,
         logger: Arc<Logger>,
         event_tx: mpsc::Sender<Event>,
+        lua_registry: Arc<LuaFunctionRegistry>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         self.config.set(config).map_err(|_| "config already set!")?;
         self.logger.set(logger).map_err(|_| "Logger already set!")?;
         self.event_tx
             .set(event_tx)
             .map_err(|_| "Event-Channel already set!")?;
+
+        //
+        lua_registry
+            .register_function("ping", |args| {
+                //self.log_info("pong from lua");
+                println!("{}", args["msg"].as_str().unwrap_or(""));
+                // serde_json::json!(null)
+                serde_json::Value::Null
+            })
+            .await;
 
         self.log_info("Booted successfully.");
 

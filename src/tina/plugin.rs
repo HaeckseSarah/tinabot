@@ -1,6 +1,7 @@
 use super::event::Event;
 use crate::Config;
 use crate::Logger;
+use crate::lua::LuaFunctionRegistry;
 use async_trait::async_trait;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -14,6 +15,7 @@ pub trait Plugin: Send + Sync {
         config: Arc<Config>,
         logger: Arc<Logger>,
         event_tx: mpsc::Sender<Event>,
+        lua_registry: Arc<LuaFunctionRegistry>,
     ) -> Result<(), Box<dyn std::error::Error>>;
 
     // start the plugin

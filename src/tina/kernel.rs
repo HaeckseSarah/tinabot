@@ -1,7 +1,9 @@
 use super::Event;
 use super::Plugin;
-use crate::config::Config;
+use crate::Config;
 use crate::logger::{LogLevel, Logger};
+use crate::lua::LuaFunctionRegistry;
+use crate::lua::LuaWrapper;
 use crate::plugins::DummyPlugin;
 use std::sync::Arc;
 use tokio::sync::{Mutex, OnceCell, RwLock, mpsc};
@@ -12,16 +14,18 @@ pub struct Kernel {
     event_rx: Mutex<Option<mpsc::Receiver<Event>>>,
     event_tx: OnceCell<mpsc::Sender<Event>>,
     plugins: RwLock<Vec<Arc<dyn Plugin>>>,
+    lua: LuaWrapper,
 }
 
 impl Kernel {
     pub fn new(config: Arc<Config>, logger: Arc<Logger>) -> Self {
         Self {
-            config,
-            logger,
+            config: config.clone(),
+            logger: logger.clone(),
             event_rx: Mutex::new(None),
             event_tx: OnceCell::new(),
             plugins: RwLock::new(Vec::new()),
+            lua: LuaWrapper::new(config.clone(), logger.clone()),
         }
     }
 
@@ -42,15 +46,22 @@ impl Kernel {
         *rx_lock = Some(event_rx);
 
         let mut booted_plugins: Vec<Arc<dyn Plugin>> = Vec::new();
+
+        // dummy plugin
         let dummy_plugin = DummyPlugin::new();
+        let dummy_lua_registry = Arc::new(LuaFunctionRegistry::new(dummy_plugin.id()));
         dummy_plugin
             .boot(
                 self.config.clone(),
                 self.logger.clone(),
                 self.get_event_tx().clone(),
+                dummy_lua_registry.clone(),
             )
             .await?;
+
+        let _ = self.lua.register_functions(dummy_lua_registry).await;
         booted_plugins.push(Arc::new(dummy_plugin));
+        // dummy plugin
 
         let mut plugins_write = self.plugins.write().await;
         *plugins_write = booted_plugins;
@@ -101,15 +112,16 @@ impl Kernel {
                                 "Kernel",
                                 &format!("Received event: {:?}", event),
                             );
+                            let _ = self.lua.test_lua();
                         }
                     }
-                        }
-                        _ = tokio::signal::ctrl_c() => {
-                            self.logger.log(LogLevel::Info, "Kernel", "ctrl+c detected. Shuting down...");
-                            break; // exit main loop
-                        }
+                }
+                _ = tokio::signal::ctrl_c() => {
+                    self.logger.log(LogLevel::Info, "Kernel", "ctrl+c detected. Shuting down...");
+                    break; // exit main loop
+                }
 
-                        else => break,
+                else => break,
             }
         }
 

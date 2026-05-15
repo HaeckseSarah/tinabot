@@ -6,7 +6,6 @@
 * lua
     * persistent globals
     * non-persistent globals
-    * 
 * queues
     * sequential
     * parallel queues
@@ -24,4 +23,8 @@
         * read file
         * process watch
 
-
+## Future Ideas
+* more services like (youtube, kick, StreamDeck, Ko-Fi,...)
+* externalize plugins for more flexibility
+* an UI
+* multiple accounts/environments

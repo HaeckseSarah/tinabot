@@ -4,6 +4,7 @@ mod config;
 mod logger;
 pub mod plugins;
 mod tina;
+mod lua;
 
 use crate::cli::Args;
 use crate::config::Config;
