@@ -29,8 +29,35 @@ impl DummyPlugin {
         self.logger.get().expect("Plugin not initialized!").as_ref()
     }
 
+    fn log_error(&self, msg: &str) {
+        self.logger().log(LogLevel::Error, self.id(), msg);
+    }
+    fn log_info(&self, msg: &str) {
+        self.logger().log(LogLevel::Info, self.id(), msg);
+    }
+    fn log_debug(&self, msg: &str) {
+        self.logger().log(LogLevel::Debug, self.id(), msg);
+    }
+
     fn event_tx(&self) -> &mpsc::Sender<Event> {
         self.event_tx.get().expect("Plugin not initialized!")
+    }
+
+    async fn emit_event(&self, event_type: &str, payload: Option<serde_json::Value>) {
+        let event = Event {
+            id: Uuid::new_v4(),
+            source: self.id().to_string(),
+            event_type: event_type.to_string(),
+            payload: payload,
+            metadata: None,
+        };
+
+        let _ = self.event_tx().send(event).await;
+    }
+
+    async fn send_message(&self, message: String) {
+        self.emit_event("message", Some(serde_json::json!({"message": message})))
+            .await;
     }
 }
 
@@ -52,16 +79,13 @@ impl Plugin for DummyPlugin {
             .set(event_tx)
             .map_err(|_| "Event-Channel already set!")?;
 
-        // Ab jetzt ist der Logger einsatzbereit
-        self.logger()
-            .log(LogLevel::Info, self.id(), "Booted successfully.");
+        self.log_info("Booted successfully.");
 
         Ok(())
     }
 
     async fn run(&self) {
-        self.logger()
-            .log(LogLevel::Info, self.id(), "Dummy plugin started.");
+        self.log_info("Dummy plugin started.");
 
         let stdin = tokio::io::stdin();
         let mut reader = BufReader::new(stdin);
@@ -69,7 +93,7 @@ impl Plugin for DummyPlugin {
 
         loop {
             if self.cancel_token.is_cancelled() {
-                self.logger().log(LogLevel::Debug, self.id(), "Kill me");
+                self.log_debug("token is cancelled");
                 break;
             }
 
@@ -78,7 +102,7 @@ impl Plugin for DummyPlugin {
 
             tokio::select! {
                 _ = self.cancel_token.cancelled() => {
-                    self.logger().log(LogLevel::Info, self.id(), "initiatiing shutdown...");
+                    self.log_info("initiatiing shutdown...");
                     break;
                 }
 
@@ -87,35 +111,21 @@ impl Plugin for DummyPlugin {
                         Ok(0) => {
                             break;
                         }
-                    Ok(_) => {
-                        let trimmed = input.trim();
-                        if trimmed.is_empty() { continue; }
-                        if trimmed == "exit" {
-                            let event = Event {
-                                id: Uuid::new_v4(),
-                                source: self.id().to_string(),
-                                event_type: "killSignal".to_string(),
-                                payload: None,
-                                metadata: None,
-                            };
 
-                            let _ = self.event_tx().send(event).await;
+                        Ok(_) => {
+                            let trimmed_input = input.trim();
+                            if trimmed_input.is_empty() { continue; }
+                            if trimmed_input == "exit" {
+                                self.emit_event("killSignal",None).await;
+                                break;
+                            }
+
+                            self.send_message(trimmed_input.to_string()).await;
+                        }
+
+                        Err(e) => {
+                            self.log_error(&format!("error on reading from stdin: {}", e));
                             break;
-                        }
-
-                        let event = Event {
-                            id: Uuid::new_v4(),
-                            source: self.id().to_string(),
-                            event_type: "onMessage".to_string(),
-                            payload: Some(serde_json::json!({"message": input.trim()})),
-                            metadata: None,
-                        };
-
-                        let _ = self.event_tx().send(event).await;
-                        }
-                    Err(e) => {
-                        self.logger().log(LogLevel::Error, self.id(), &format!("error on reading from stdin: {}", e));
-                        break;
                         }
                     }
                 }
@@ -124,7 +134,7 @@ impl Plugin for DummyPlugin {
     }
 
     async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error>> {
-        self.logger().log(LogLevel::Info, self.id(), "shutdown");
+        self.log_info("shutdown");
         self.cancel_token.cancel();
 
         Ok(())
