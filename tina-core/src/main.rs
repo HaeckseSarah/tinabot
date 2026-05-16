@@ -1,15 +1,14 @@
 use std::sync::Arc;
 mod cli;
 mod config;
+mod kernel;
 mod logger;
-pub mod plugins;
-mod tina;
 mod lua;
 
 use crate::cli::Args;
 use crate::config::Config;
+use crate::kernel::Kernel;
 use crate::logger::Logger;
-use crate::tina::Kernel;
 
 use clap::Parser;
 

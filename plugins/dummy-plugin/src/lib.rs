@@ -1,64 +1,63 @@
-use crate::Config;
-use crate::logger::{LogLevel, Logger};
-use crate::lua::LuaFunctionRegistry;
-use crate::tina::{Event, Plugin};
+use tina_plugin_api::{ConfigLookup, Event, EventTx, EventValue, LogFn, Plugin, ScriptRegistry};
+
 use async_trait::async_trait;
-use std::sync::Arc;
+use std::collections::HashMap;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::{OnceCell, mpsc};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 pub struct DummyPlugin {
-    config: OnceCell<Arc<Config>>,
-    logger: OnceCell<Arc<Logger>>,
-    event_tx: OnceCell<mpsc::Sender<Event>>,
+    config_get: OnceCell<ConfigLookup>,
+    log: OnceCell<LogFn>,
+    event_tx: OnceCell<EventTx>,
     cancel_token: CancellationToken,
 }
 
 impl DummyPlugin {
     pub fn new() -> Self {
         Self {
-            config: OnceCell::new(),
-            logger: OnceCell::new(),
+            config_get: OnceCell::new(),
+            log: OnceCell::new(),
             event_tx: OnceCell::new(),
             cancel_token: CancellationToken::new(),
         }
-    }
-
-    fn logger(&self) -> &Logger {
-        self.logger.get().expect("Plugin not initialized!").as_ref()
-    }
-
-    fn log_error(&self, msg: &str) {
-        self.logger().log(LogLevel::Error, self.id(), msg);
-    }
-    fn log_info(&self, msg: &str) {
-        self.logger().log(LogLevel::Info, self.id(), msg);
-    }
-    fn log_debug(&self, msg: &str) {
-        self.logger().log(LogLevel::Debug, self.id(), msg);
     }
 
     fn event_tx(&self) -> &mpsc::Sender<Event> {
         self.event_tx.get().expect("Plugin not initialized!")
     }
 
-    async fn emit_event(&self, event_type: &str, payload: Option<serde_json::Value>) {
+    fn log(&self, level: &i32, msg: &str) {
+        let log = self.log.get().expect("Plugin not booted!");
+        log(level, self.id(), msg);
+    }
+
+    fn log_error(&self, msg: &str) {
+        self.log(&3, msg);
+    }
+    fn log_info(&self, msg: &str) {
+        self.log(&1, msg);
+    }
+    fn log_debug(&self, msg: &str) {
+        self.log(&0, msg);
+    }
+
+    async fn emit_event(&self, event_type: &str, payload: Option<HashMap<String, EventValue>>) {
         let event = Event {
             id: Uuid::new_v4(),
             source: self.id().to_string(),
             event_type: event_type.to_string(),
             payload: payload,
-            metadata: None,
         };
 
         let _ = self.event_tx().send(event).await;
     }
 
     async fn send_message(&self, message: String) {
-        self.emit_event("message", Some(serde_json::json!({"message": message})))
-            .await;
+        let mut payload = HashMap::new();
+        payload.insert("message".to_string(), EventValue::String(message));
+        self.emit_event("message", Some(payload)).await;
     }
 }
 
@@ -70,23 +69,25 @@ impl Plugin for DummyPlugin {
 
     async fn boot<'lua>(
         &self,
-        config: Arc<Config>,
-        logger: Arc<Logger>,
-        event_tx: mpsc::Sender<Event>,
-        lua_registry: &mut LuaFunctionRegistry<'lua>,
+        config_get: ConfigLookup,
+        log: LogFn,
+        event_tx: EventTx,
+        script_registry: &mut ScriptRegistry<'_>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        self.config.set(config).map_err(|_| "config already set!")?;
-        self.logger.set(logger).map_err(|_| "Logger already set!")?;
-        self.event_tx
+        let _ = self
+            .config_get
+            .set(config_get)
+            .map_err(|_| "config already set!")?;
+        let _ = self.log.set(log).map_err(|_| "Logger already set!")?;
+        let _ = self
+            .event_tx
             .set(event_tx)
             .map_err(|_| "Event-Channel already set!")?;
 
-        lua_registry.register_function("ping", |_lua, msg: String| {
+        script_registry.register_function("ping", |_lua, msg: String| {
             println!("{}", msg.as_str());
             Ok(())
         });
-
-        self.log_info("Booted successfully.");
 
         Ok(())
     }

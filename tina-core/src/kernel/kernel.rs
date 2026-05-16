@@ -1,10 +1,9 @@
-use super::Event;
-use super::Plugin;
 use crate::Config;
 use crate::logger::{LogLevel, Logger};
 use crate::lua::LuaWrapper;
-use crate::plugins::DummyPlugin;
+use dummy_plugin::DummyPlugin;
 use std::sync::Arc;
+use tina_plugin_api::{ConfigLookup, Event, LogFn, Plugin};
 use tokio::sync::{Mutex, OnceCell, RwLock, mpsc};
 
 pub struct Kernel {
@@ -46,25 +45,38 @@ impl Kernel {
 
         let mut booted_plugins: Vec<Arc<dyn Plugin>> = Vec::new();
 
+        let config_clone = self.config.clone();
+        let config_lookup: ConfigLookup =
+            Arc::new(move |key, default: &str| config_clone.get(key, default));
+
+        let logger_clone = self.logger.clone();
+        let log_fn: LogFn = Arc::new(move |level, target, message| {
+            let log_level = LogLevel::try_from(*level).unwrap_or(LogLevel::Error);
+            logger_clone.log(log_level, target, message);
+        });
+
         // dummy plugin
         let dummy_plugin = DummyPlugin::new();
-        let mut dummy_lua_registry = self.lua.create_registry(dummy_plugin.id());
+        let mut dummy_script_registry = self.lua.create_registry(dummy_plugin.id());
 
         dummy_plugin
             .boot(
-                self.config.clone(),
-                self.logger.clone(),
+                config_lookup.clone(),
+                log_fn.clone(),
                 self.get_event_tx().clone(),
-                &mut dummy_lua_registry,
+                &mut dummy_script_registry,
             )
             .await?;
 
-        let _ = self.lua.register_functions(dummy_lua_registry).await;
+        self.lua.register_functions(dummy_script_registry).await?;
+
         booted_plugins.push(Arc::new(dummy_plugin));
         // dummy plugin
 
         let mut plugins_write = self.plugins.write().await;
         *plugins_write = booted_plugins;
+
+        self.lua.load_scripts()?;
         Ok(())
     }
 

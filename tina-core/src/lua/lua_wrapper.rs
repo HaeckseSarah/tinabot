@@ -1,7 +1,11 @@
 use crate::logger::LogLevel;
-use crate::{Config, Logger, lua::LuaFunctionRegistry};
+use crate::{Config, Logger};
 use mlua::{Lua, Table};
+use std::path::PathBuf;
 use std::sync::Arc;
+use tina_plugin_api::ScriptRegistry;
+use walkdir::WalkDir;
+
 pub struct LuaWrapper {
     lua: Lua,
     config: Arc<Config>,
@@ -18,13 +22,13 @@ impl LuaWrapper {
         }
     }
 
-    pub fn create_registry<'lua>(&'lua self, namespace: &str) -> LuaFunctionRegistry<'lua> {
-        LuaFunctionRegistry::new(namespace, &self.lua)
+    pub fn create_registry<'lua>(&'lua self, namespace: &str) -> ScriptRegistry<'lua> {
+        ScriptRegistry::new(namespace, &self.lua)
     }
 
     pub async fn register_functions<'lua>(
         &self,
-        function_registry: LuaFunctionRegistry<'lua>,
+        function_registry: ScriptRegistry<'lua>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let globals = self.lua.globals();
 
@@ -85,6 +89,28 @@ impl LuaWrapper {
             self.logger.log(LogLevel::Error, "LUA", &error_msg);
         }
 
+        Ok(())
+    }
+
+    pub fn load_scripts(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let scripts_path = self.config.get("TINA_SCRIPTS_PATH", "./scripts");
+        let path = PathBuf::from(scripts_path);
+
+        if !path.exists() {
+            return Err(format!("Script Folder not found: {:?}", path).into());
+        }
+
+        for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
+            if entry.path().extension().and_then(|s| s.to_str()) == Some("lua") {
+                let content = std::fs::read_to_string(entry.path())?;
+                self.lua.load(&content).exec()?;
+                self.logger.log(
+                    LogLevel::Info,
+                    "LuaPlugin",
+                    &format!("script loaded: {:?}", entry.path().file_name().unwrap()),
+                );
+            }
+        }
         Ok(())
     }
 }

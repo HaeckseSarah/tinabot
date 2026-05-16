@@ -34,6 +34,20 @@ impl LogLevel {
     }
 }
 
+impl TryFrom<i32> for LogLevel {
+    type Error = String;
+
+    fn try_from(value: i32) -> Result<Self, String> {
+        match value {
+            0 => Ok(LogLevel::Debug),
+            1 => Ok(LogLevel::Info),
+            2 => Ok(LogLevel::Warn),
+            3 => Ok(LogLevel::Error),
+            _ => Err(format!("Unbekanntes Log-Level: {}", value)),
+        }
+    }
+}
+
 pub struct Logger {
     level: LogLevel,
     log_file: Option<std::sync::Mutex<std::fs::File>>, // thread-safe

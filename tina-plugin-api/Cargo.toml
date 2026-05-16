@@ -1,0 +1,11 @@
+[package]
+name = "tina-plugin-api"
+version = "0.0.1"
+edition = "2024"
+
+[dependencies]
+async-trait = "0.1"
+mlua = { version = "0.11", features = ["lua55", "vendored", "async", "send", "serialize"] }
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1.52", features = ["full"] }
+uuid = { version = "1.23.1", features = ["serde", "v4"] }
