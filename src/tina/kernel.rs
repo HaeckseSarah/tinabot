@@ -2,7 +2,6 @@ use super::Event;
 use super::Plugin;
 use crate::Config;
 use crate::logger::{LogLevel, Logger};
-use crate::lua::LuaFunctionRegistry;
 use crate::lua::LuaWrapper;
 use crate::plugins::DummyPlugin;
 use std::sync::Arc;
@@ -49,13 +48,14 @@ impl Kernel {
 
         // dummy plugin
         let dummy_plugin = DummyPlugin::new();
-        let dummy_lua_registry = Arc::new(LuaFunctionRegistry::new(dummy_plugin.id()));
+        let mut dummy_lua_registry = self.lua.create_registry(dummy_plugin.id());
+
         dummy_plugin
             .boot(
                 self.config.clone(),
                 self.logger.clone(),
                 self.get_event_tx().clone(),
-                dummy_lua_registry.clone(),
+                &mut dummy_lua_registry,
             )
             .await?;
 

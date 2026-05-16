@@ -1,40 +1,39 @@
 use crate::logger::{LogLevel, Logger};
-use std::sync::Arc;
-use tokio::sync::{Mutex, OnceCell, RwLock, mpsc};
+use mlua::{FromLuaMulti, Function, IntoLuaMulti, Lua};
 
-pub struct LuaFunctionDefinition {
-    pub name: String,
-    pub callback: Arc<dyn Fn(serde_json::Value) -> serde_json::Value + Send + Sync + 'static>,
-}
-
-pub struct LuaFunctionRegistry {
+pub struct LuaFunctionRegistry<'lua> {
     prefix: String,
-    fns: Arc<tokio::sync::Mutex<Vec<LuaFunctionDefinition>>>,
+    lua: &'lua Lua,
+    fns: Vec<(String, Function)>,
 }
 
-impl LuaFunctionRegistry {
+impl<'lua> LuaFunctionRegistry<'lua> {
     // Der Kernel erstellt die Registry spezifisch für dieses eine Plugin
-    pub fn new(plugin_id: &str) -> Self {
+    pub fn new(plugin_id: &str, lua: &'lua Lua) -> Self {
         Self {
             prefix: plugin_id.to_string(),
-            fns: Arc::new(tokio::sync::Mutex::new(Vec::new())),
+            lua,
+            fns: Vec::new(),
         }
     }
 
-    pub async fn register_function<F>(&self, name: &str, callback: F)
+    pub fn register_function<F, A, R>(&mut self, name: &str, callback: F)
     where
-        F: Fn(serde_json::Value) -> serde_json::Value + Send + Sync + 'static,
+        A: FromLuaMulti,
+        R: IntoLuaMulti,
+        F: Fn(&Lua, A) -> mlua::Result<R> + Send + Sync + 'static,
     {
-        let full_name: String = format!("{}.{}", self.prefix, name);
+        let full_name = format!("{}.{}", self.prefix, name);
 
-        let mut fns = self.fns.lock().await;
-        fns.push(LuaFunctionDefinition {
-            name: full_name,
-            callback: Arc::new(callback),
-        });
+        let lua_func = self
+            .lua
+            .create_function(callback)
+            .expect("Error while creating lua function");
+
+        self.fns.push((full_name, lua_func));
     }
 
-    pub fn fns(&self) -> Arc<tokio::sync::Mutex<Vec<LuaFunctionDefinition>>> {
+    pub fn fns(&self) -> Vec<(String, Function)> {
         self.fns.clone()
     }
 }

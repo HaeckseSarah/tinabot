@@ -68,12 +68,12 @@ impl Plugin for DummyPlugin {
         "dummyPlugin"
     }
 
-    async fn boot(
+    async fn boot<'lua>(
         &self,
         config: Arc<Config>,
         logger: Arc<Logger>,
         event_tx: mpsc::Sender<Event>,
-        lua_registry: Arc<LuaFunctionRegistry>,
+        lua_registry: &mut LuaFunctionRegistry<'lua>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         self.config.set(config).map_err(|_| "config already set!")?;
         self.logger.set(logger).map_err(|_| "Logger already set!")?;
@@ -81,15 +81,10 @@ impl Plugin for DummyPlugin {
             .set(event_tx)
             .map_err(|_| "Event-Channel already set!")?;
 
-        //
-        lua_registry
-            .register_function("ping", |args| {
-                //self.log_info("pong from lua");
-                println!("{}", args["msg"].as_str().unwrap_or(""));
-                // serde_json::json!(null)
-                serde_json::Value::Null
-            })
-            .await;
+        lua_registry.register_function("ping", |_lua, msg: String| {
+            println!("{}", msg.as_str());
+            Ok(())
+        });
 
         self.log_info("Booted successfully.");
 

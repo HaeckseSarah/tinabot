@@ -10,12 +10,12 @@ use tokio::sync::mpsc;
 pub trait Plugin: Send + Sync {
     fn id(&self) -> &str; //plugin name
 
-    async fn boot(
+    async fn boot<'lua>(
         &self,
         config: Arc<Config>,
         logger: Arc<Logger>,
         event_tx: mpsc::Sender<Event>,
-        lua_registry: Arc<LuaFunctionRegistry>,
+        lua_registry: &mut LuaFunctionRegistry<'lua>,
     ) -> Result<(), Box<dyn std::error::Error>>;
 
     // start the plugin
