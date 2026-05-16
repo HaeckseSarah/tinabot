@@ -10,8 +10,9 @@ pub struct LuaWrapper {
 
 impl LuaWrapper {
     pub fn new(config: Arc<Config>, logger: Arc<Logger>) -> Self {
+        let lua = Lua::new_with(mlua::StdLib::ALL_SAFE, mlua::LuaOptions::default()).unwrap();
         Self {
-            lua: Lua::new(),
+            lua: lua,
             config,
             logger,
         }
