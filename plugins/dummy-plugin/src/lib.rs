@@ -7,6 +7,7 @@ use tokio::sync::{OnceCell, mpsc};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
+/// A plugin used for testing
 pub struct DummyPlugin {
     config_get: OnceCell<ConfigLookup>,
     log: OnceCell<LogFn>,
@@ -15,6 +16,7 @@ pub struct DummyPlugin {
 }
 
 impl DummyPlugin {
+    /// Creates a new uninitialized instance
     pub fn new() -> Self {
         Self {
             config_get: OnceCell::new(),
@@ -24,15 +26,16 @@ impl DummyPlugin {
         }
     }
 
+    /// Internal helper to retrieve the event sender channel.   
     fn event_tx(&self) -> &mpsc::Sender<Event> {
         self.event_tx.get().expect("Plugin not initialized!")
     }
 
+    // logging helper functions
     fn log(&self, level: &i32, msg: &str) {
         let log = self.log.get().expect("Plugin not booted!");
         log(level, self.id(), msg);
     }
-
     fn log_error(&self, msg: &str) {
         self.log(&3, msg);
     }
@@ -43,7 +46,8 @@ impl DummyPlugin {
         self.log(&0, msg);
     }
 
-    async fn emit_event(&self, event_type: &str, payload: Option<HashMap<String, EventValue>>) {
+    /// Asynchronously send an event to the core.
+    async fn send_event(&self, event_type: &str, payload: Option<HashMap<String, EventValue>>) {
         let event = Event {
             id: Uuid::new_v4(),
             source: self.id().to_string(),
@@ -54,19 +58,48 @@ impl DummyPlugin {
         let _ = self.event_tx().send(event).await;
     }
 
+    /// Helper function for sending an message-event
     async fn send_message(&self, message: String) {
         let mut payload = HashMap::new();
         payload.insert("message".to_string(), EventValue::String(message));
-        self.emit_event("message", Some(payload)).await;
+        self.send_event("message", Some(payload)).await;
+    }
+
+    /// Registers all API bindings this plugin wants to expose to the Lua runtime environment.
+    fn register_scripts(&self, script_registry: &mut ScriptRegistry<'_>) {
+        self.register_script_ping(script_registry);
+    }
+
+    /// Binds the `ping` function to Lua,
+    /// letting scripts print messages to standard output.
+    fn register_script_ping(&self, script_registry: &mut ScriptRegistry<'_>) {
+        script_registry.register_function("ping", |_lua, msg: String| {
+            println!("{}", msg.as_str());
+            Ok(())
+        });
+    }
+
+    /// Routes evaluated stdin strings to their respective internal plugin actions.    
+    async fn handle_input(&self, input: &str) {
+        match input {
+            "exit" => {
+                self.send_event("killSignal", None).await;
+            }
+            _ => {
+                self.send_message(input.to_string()).await;
+            }
+        }
     }
 }
 
 #[async_trait]
 impl Plugin for DummyPlugin {
+    /// Returns the unique string identity used to reference this specific plugin    
     fn id(&self) -> &str {
         "dummyPlugin"
     }
 
+    /// Initializes the plugin.
     async fn boot<'lua>(
         &self,
         config_get: ConfigLookup,
@@ -84,14 +117,11 @@ impl Plugin for DummyPlugin {
             .set(event_tx)
             .map_err(|_| "Event-Channel already set!")?;
 
-        script_registry.register_function("ping", |_lua, msg: String| {
-            println!("{}", msg.as_str());
-            Ok(())
-        });
+        self.register_scripts(script_registry);
 
         Ok(())
     }
-
+    /// starts main loop
     async fn run(&self) {
         self.log_info("Dummy plugin started.");
 
@@ -100,15 +130,11 @@ impl Plugin for DummyPlugin {
         let mut input = String::new();
 
         loop {
-            if self.cancel_token.is_cancelled() {
-                self.log_debug("token is cancelled");
-                break;
-            }
-
             println!("tina>");
             input.clear();
 
             tokio::select! {
+                // token to exit main loop
                 _ = self.cancel_token.cancelled() => {
                     self.log_info("initiatiing shutdown...");
                     break;
@@ -123,12 +149,7 @@ impl Plugin for DummyPlugin {
                         Ok(_) => {
                             let trimmed_input = input.trim();
                             if trimmed_input.is_empty() { continue; }
-                            if trimmed_input == "exit" {
-                                self.emit_event("killSignal",None).await;
-                                break;
-                            }
-
-                            self.send_message(trimmed_input.to_string()).await;
+                            self.handle_input(trimmed_input).await;
                         }
 
                         Err(e) => {
@@ -141,6 +162,7 @@ impl Plugin for DummyPlugin {
         }
     }
 
+    /// cancel main loop and gracefully shutdown this plugin    
     async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error>> {
         self.log_info("shutdown");
         self.cancel_token.cancel();
