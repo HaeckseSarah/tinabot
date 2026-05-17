@@ -1,5 +1,6 @@
 mod cli;
 mod config;
+mod event;
 mod kernel;
 mod logger;
 mod lua;

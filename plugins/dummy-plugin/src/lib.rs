@@ -76,7 +76,7 @@ impl DummyPlugin {
     /// letting scripts print messages to standard output.
     fn register_script_ping(&self, script_registry: &mut ScriptRegistry<'_>) {
         script_registry.register_function("ping", |_lua, msg: String| {
-            println!("{}", msg.as_str());
+            println!("Ping: {}", msg.as_str());
             Ok(())
         });
     }

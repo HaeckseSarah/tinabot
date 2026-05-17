@@ -1,3 +1,7 @@
-require("lib")
+function onMessage(event)
+	require("lib")
+	print("Hello from test/main.lua")
+	print_r(event, "  ")
+end
 
-print("complex type")
+t.on("message", onMessage)

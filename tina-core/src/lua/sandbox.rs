@@ -36,7 +36,7 @@ impl<'lua> Sandbox<'lua> {
         let sandbox_path = format!("{}/?.lua;{}/?/init.lua", base_dir_str, base_dir_str);
 
         global_package.set("path", sandbox_path)?;
-        global_package.set("loaded", self.lua.create_table()?)?; // Leerer Cache für diese Sandbox
+        global_package.set("loaded", self.lua.create_table()?)?;
 
         self.env.set("require", global_require)?;
         self.env.set("package", global_package)?;

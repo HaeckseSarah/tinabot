@@ -1,4 +1,5 @@
 use crate::Config;
+use crate::event::Dispatcher;
 use crate::logger::{LogLevel, Logger};
 use crate::lua::Wrapper;
 use dummy_plugin::DummyPlugin;
@@ -13,6 +14,7 @@ pub struct Kernel {
     event_tx: OnceCell<mpsc::Sender<Event>>,
     plugins: RwLock<Vec<Arc<dyn Plugin>>>,
     lua: Wrapper,
+    event_dispatcher: OnceCell<Dispatcher>,
 }
 
 impl Kernel {
@@ -24,6 +26,7 @@ impl Kernel {
             event_tx: OnceCell::new(),
             plugins: RwLock::new(Vec::new()),
             lua: Wrapper::new(config.clone(), logger.clone()),
+            event_dispatcher: OnceCell::new(),
         }
     }
 
@@ -53,13 +56,10 @@ impl Kernel {
         config_lookup: Arc<dyn Fn(&str) -> Option<String> + Send + Sync>,
         log_fn: LogFn,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        // 1. Setup the isolated mLua registry proxy
         let mut script_registry = self.lua.create_registry(plugin.id());
 
-        // 2. Wrap the configuration into the secure namespace container
         let plugin_config = PluginConfig::new(plugin.id(), config_lookup);
 
-        // 3. Boot the plugin instance safely
         plugin
             .boot(
                 plugin_config,
@@ -69,7 +69,6 @@ impl Kernel {
             )
             .await?;
 
-        // 4. Commit the newly registered script bindings back into the Lua runtime
         self.lua
             .register_functions(script_registry, Some("p"))
             .await?;
@@ -123,6 +122,14 @@ impl Kernel {
         let mut plugins_write = self.plugins.write().await;
         *plugins_write = booted_plugins;
 
+        let event_registry = self.lua.event_registry();
+
+        let _ = self.event_dispatcher.set(Dispatcher::new(
+            self.lua.lua_instance(),
+            event_registry,
+            self.logger.clone(),
+        ));
+
         self.lua.load_scripts().await?;
         Ok(())
     }
@@ -149,6 +156,8 @@ impl Kernel {
             });
         }
 
+        let dispatcher = self.event_dispatcher.get().expect("dispatcher not found!");
+
         self.logger
             .log(LogLevel::Info, "Kernel", "Running Kernel...");
 
@@ -171,7 +180,8 @@ impl Kernel {
                                 "Kernel",
                                 &format!("Received event: {:?}", event),
                             );
-                            //let _ = self.lua.test_lua();
+                            let _ = dispatcher.dispatch(event).await;
+
                         }
                     }
                 }

@@ -1,2 +1,6 @@
-print("Test2")
-p.dummy.ping("from lua with love <3")
+function onMessage(event)
+	print("Hello from test2.lua")
+	p.dummy.ping(event.message)
+end
+
+t.on("message", onMessage)

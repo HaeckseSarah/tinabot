@@ -1,27 +1,50 @@
+use super::functions;
+use crate::event::Registry;
 use crate::logger::LogLevel;
 use crate::lua::Sandbox;
 use crate::{Config, Logger};
-use mlua::{Lua, LuaOptions, StdLib, Table};
+use mlua::{Function, Lua, LuaOptions, RegistryKey, StdLib, Table, Value};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tina_plugin_api::ScriptRegistry;
+
+pub struct LuaCallback {
+    pub script_name: String,
+    pub function_key: RegistryKey,
+}
 
 pub struct Wrapper {
     lua: Lua,
     config: Arc<Config>,
     logger: Arc<Logger>,
+    event_registry: Registry,
 }
 
 impl Wrapper {
     pub fn new(config: Arc<Config>, logger: Arc<Logger>) -> Self {
         let safe_libs = StdLib::TABLE | StdLib::STRING | StdLib::MATH | StdLib::UTF8;
         let lua = Lua::new_with(safe_libs, LuaOptions::default()).unwrap();
-        Self {
+        let event_registry = Registry::new();
+
+        let wrapper = Self {
             lua: lua,
             config,
             logger,
-        }
+            event_registry,
+        };
+
+        wrapper.register_core_api().unwrap();
+        wrapper
+    }
+
+    pub fn event_registry(&self) -> Registry {
+        self.event_registry.clone()
+    }
+
+    pub fn lua_instance(&self) -> Lua {
+        self.lua.clone()
     }
 
     pub fn create_registry<'lua>(&'lua self, namespace: &str) -> ScriptRegistry<'lua> {
@@ -35,7 +58,7 @@ impl Wrapper {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let globals = self.lua.globals();
 
-        let parent_name = parent.unwrap_or("tina");
+        let parent_name = parent.unwrap_or("p");
 
         let parent_table: Table = if globals.contains_key(parent_name)? {
             globals.get(parent_name)?
@@ -101,13 +124,13 @@ impl Wrapper {
             let path = entry.path();
 
             if path.is_file() {
-                // REGEL 1: Jede .lua Datei direkt im /scripts Ordner kriegt eine strikte Sandbox
+                // load .lua file in script-folder
                 if path.extension().map_or(false, |ext| ext == "lua") {
                     let sandbox = Sandbox::new(&self.lua);
                     sandbox.execute(path).await?;
                 }
             } else if path.is_dir() {
-                // REGEL 2: Bei Ordnern suchen wir NUR nach der main.lua
+                // load main.lua in script/folder, if exists
                 let main_lua_path = path.join("main.lua");
                 if main_lua_path.exists() {
                     let sandbox = Sandbox::new(&self.lua);
@@ -116,6 +139,27 @@ impl Wrapper {
                 }
             }
         }
+
+        Ok(())
+    }
+
+    fn register_core_api(&self) -> mlua::Result<()> {
+        let globals = self.lua.globals();
+
+        let tina_table: Table = if globals.contains_key("t")? {
+            globals.get("t")?
+        } else {
+            let t = self.lua.create_table()?;
+            globals.set("t", t.clone())?;
+            t
+        };
+
+        super::functions::register_all(
+            &self.lua,
+            &tina_table,
+            self.event_registry.clone(),
+            self.logger.clone(),
+        )?;
 
         Ok(())
     }

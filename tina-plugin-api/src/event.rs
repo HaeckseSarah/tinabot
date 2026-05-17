@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 /// Supported types that can be in an event payload.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
 pub enum EventValue {
     String(String),
     Integer(i64),
