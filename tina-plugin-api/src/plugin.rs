@@ -29,8 +29,29 @@ impl PluginConfig {
 
     /// Requesting "VAR" searches for "TINA_{PLUGIN_ID}_VAR".
     pub fn get(&self, key: &str) -> Option<String> {
-        let namespaced_key = format!("TINA_{}_{}", self.plugin_id, key.to_uppercase());
-        (self.global_lookup)(&namespaced_key)
+        // check env
+        let env_key = format!(
+            "TINA_{}_{}",
+            self.plugin_id.to_uppercase(),
+            key.to_uppercase()
+        );
+
+        if let Ok(env_value) = std::env::var(&env_key) {
+            return Some(env_value);
+        }
+
+        // check config
+        let toml_key = format!(
+            "plugin.{}.{}",
+            self.plugin_id.to_lowercase(),
+            key.to_lowercase()
+        );
+
+        if let Some(value) = (self.global_lookup)(&toml_key) {
+            return Some(value);
+        }
+
+        None
     }
 }
 

@@ -29,14 +29,17 @@ impl LuaWrapper {
     pub async fn register_functions<'lua>(
         &self,
         function_registry: ScriptRegistry<'lua>,
+        parent: Option<&str>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let globals = self.lua.globals();
 
-        let tina_table: Table = if globals.contains_key("tina")? {
-            globals.get("tina")?
+        let parent_name = parent.unwrap_or("tina");
+
+        let parent_table: Table = if globals.contains_key(parent_name)? {
+            globals.get(parent_name)?
         } else {
             let table = self.lua.create_table()?;
-            globals.set("tina", table.clone())?;
+            globals.set(parent_name, table.clone())?;
             table
         };
 
@@ -59,7 +62,7 @@ impl LuaWrapper {
 
             // get/build namespace
             let namespace_parts = &parts[..parts.len() - 1];
-            let mut current_table = tina_table.clone();
+            let mut current_table = parent_table.clone();
 
             for &part in namespace_parts {
                 let next_table: Table = if current_table.contains_key(part)? {
@@ -81,7 +84,7 @@ impl LuaWrapper {
 
     pub fn test_lua(&self) -> Result<(), Box<dyn std::error::Error>> {
         let test_script = r#"
-            tina.dummyPlugin.ping("from lua with love <3")
+            p.dummy.ping("from lua with love <3")
         "#;
 
         if let Err(e) = self.lua.load(test_script).exec() {
@@ -93,11 +96,11 @@ impl LuaWrapper {
     }
 
     pub fn load_scripts(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let scripts_path = self
+        let script_path = self
             .config
-            .get("TINA_SCRIPTS_PATH")
-            .ok_or_else(|| "could not read TINA_SCRIPTS_PATH from config!")?;
-        let path = PathBuf::from(scripts_path);
+            .get("lua.script_path")
+            .ok_or_else(|| "could not read lua.script_path from config!")?;
+        let path = PathBuf::from(script_path);
 
         if !path.exists() {
             return Err(format!("Script Folder not found: {:?}", path).into());

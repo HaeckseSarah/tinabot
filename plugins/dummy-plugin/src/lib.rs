@@ -43,6 +43,11 @@ impl DummyPlugin {
         self.log(&1, msg);
     }
 
+    fn _config_get(&self, key: &str) -> Option<String> {
+        let config = self.config.get().expect("Plugin not booted!");
+        config.get(key)
+    }
+
     /// Asynchronously send an event to the core.
     async fn send_event(&self, event_type: &str, payload: Option<HashMap<String, EventValue>>) {
         let event = Event {
@@ -93,7 +98,7 @@ impl DummyPlugin {
 impl Plugin for DummyPlugin {
     /// Returns the unique string identity used to reference this specific plugin    
     fn id(&self) -> &str {
-        "dummyPlugin"
+        "dummy"
     }
 
     /// Initializes the plugin.

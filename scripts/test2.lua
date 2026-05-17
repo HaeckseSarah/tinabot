@@ -1,2 +1,2 @@
 print("Test2")
-tina.dummyPlugin.ping("ping!")
+p.dummy.ping("from lua with love <3")

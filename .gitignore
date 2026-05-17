@@ -1,5 +1,6 @@
 *.log
 *.conf
+tina.toml
 
 ### Lua ###
 # Compiled Lua sources

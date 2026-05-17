@@ -70,7 +70,9 @@ impl Kernel {
             .await?;
 
         // 4. Commit the newly registered script bindings back into the Lua runtime
-        self.lua.register_functions(script_registry).await?;
+        self.lua
+            .register_functions(script_registry, Some("p"))
+            .await?;
 
         Ok(())
     }
@@ -105,21 +107,19 @@ impl Kernel {
         });
 
         // check config for enabled plugins and load
-        if let Some(enabled_plugins_list) = self.config.get("TINA_ENABLED_PLUGINS") {
-            for plugin_name in enabled_plugins_list.split(',') {
-                if let Some(plugin_instance) = self.create_plugin_instance(plugin_name) {
-                    self.boot_plugin(
-                        plugin_instance.clone(),
-                        config_lookup.clone(),
-                        log_fn.clone(),
-                    )
-                    .await?;
-
-                    booted_plugins.push(plugin_instance);
-                }
+        let enabled_plugins = self.config.get_array("plugins.enabled");
+        for plugin_name in enabled_plugins {
+            if let Some(plugin_instance) = self.create_plugin_instance(&plugin_name) {
+                self.boot_plugin(
+                    plugin_instance.clone(),
+                    config_lookup.clone(),
+                    log_fn.clone(),
+                )
+                .await?;
+                // Keep the plugin alive in the local runtime vector
+                booted_plugins.push(plugin_instance);
             }
         }
-
         let mut plugins_write = self.plugins.write().await;
         *plugins_write = booted_plugins;
 
