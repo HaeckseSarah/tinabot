@@ -1,5 +1,6 @@
 function onMessage(event)
 	print("Hello from test2.lua")
+	t.delay(1000)
 	p.dummy.ping(event.message)
 end
 
