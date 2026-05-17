@@ -42,9 +42,6 @@ impl DummyPlugin {
     fn log_info(&self, msg: &str) {
         self.log(&1, msg);
     }
-    fn log_debug(&self, msg: &str) {
-        self.log(&0, msg);
-    }
 
     /// Asynchronously send an event to the core.
     async fn send_event(&self, event_type: &str, payload: Option<HashMap<String, EventValue>>) {
