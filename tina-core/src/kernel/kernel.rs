@@ -4,7 +4,7 @@ use crate::logger::{LogLevel, Logger};
 use crate::lua::Wrapper;
 use dummy_plugin::DummyPlugin;
 use std::sync::Arc;
-use tina_plugin_api::{Event, LogFn, Plugin, PluginConfig};
+use tina_plugin_api::{Event, LogFn, Plugin, PluginConfig, PluginContext};
 use tokio::sync::{Mutex, OnceCell, RwLock, mpsc};
 
 pub struct Kernel {
@@ -59,15 +59,15 @@ impl Kernel {
         let mut script_registry = self.lua.create_registry(plugin.id());
 
         let plugin_config = PluginConfig::new(plugin.id(), config_lookup);
+        let plugin_context = PluginContext::new(
+            plugin.id(),
+            plugin_config,
+            self.get_event_tx().clone(),
+            log_fn,
+        );
 
-        plugin
-            .boot(
-                plugin_config,
-                log_fn,
-                self.get_event_tx().clone(),
-                &mut script_registry,
-            )
-            .await?;
+        // Boot starten
+        plugin.boot(plugin_context, &mut script_registry).await?;
 
         self.lua
             .register_functions(script_registry, Some("p"))
@@ -165,8 +165,7 @@ impl Kernel {
             tokio::select! {
                 Some(event) = event_rx.recv() => {
                     match event.event_type.as_str() {
-                        "killSignal" => {
-                            // TODO check permissions
+                        "dummy.shutdown" => {
                             self.logger.log(
                                 LogLevel::Debug,
                                 "Kernel",
@@ -181,7 +180,6 @@ impl Kernel {
                                 &format!("Received event: {:?}", event),
                             );
                             let _ = dispatcher.dispatch(event).await;
-
                         }
                     }
                 }

@@ -1,3 +1,4 @@
+use crate::PluginContext;
 use crate::event::Event;
 use crate::scripting::ScriptRegistry;
 use async_trait::async_trait;
@@ -65,9 +66,7 @@ pub trait Plugin: Send + Sync {
     /// initialize plugin and register script functions
     async fn boot<'lua>(
         &self,
-        config: PluginConfig,
-        log: LogFn,
-        event_tx: EventTx,
+        context: PluginContext,
         script_registry: &mut ScriptRegistry<'_>,
     ) -> Result<(), Box<dyn std::error::Error>>;
 

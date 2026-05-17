@@ -1,17 +1,14 @@
-use tina_plugin_api::{Event, EventTx, EventValue, LogFn, Plugin, PluginConfig, ScriptRegistry};
+use tina_plugin_api::{EventValue, Plugin, PluginContext, ScriptRegistry};
 
 use async_trait::async_trait;
 use std::collections::HashMap;
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::sync::{OnceCell, mpsc};
+use tokio::sync::OnceCell;
 use tokio_util::sync::CancellationToken;
-use uuid::Uuid;
 
 /// A plugin used for testing
 pub struct DummyPlugin {
-    config: OnceCell<PluginConfig>,
-    log: OnceCell<LogFn>,
-    event_tx: OnceCell<EventTx>,
+    context: OnceCell<PluginContext>, // Nur noch eine Cell für den gesamten Kontext!
     cancel_token: CancellationToken,
 }
 
@@ -19,52 +16,14 @@ impl DummyPlugin {
     /// Creates a new uninitialized instance
     pub fn new() -> Self {
         Self {
-            config: OnceCell::new(),
-            log: OnceCell::new(),
-            event_tx: OnceCell::new(),
+            context: OnceCell::new(),
             cancel_token: CancellationToken::new(),
         }
     }
 
-    /// Internal helper to retrieve the event sender channel.   
-    fn event_tx(&self) -> &mpsc::Sender<Event> {
-        self.event_tx.get().expect("Plugin not initialized!")
-    }
-
-    // logging helper functions
-    fn log(&self, level: &i32, msg: &str) {
-        let log = self.log.get().expect("Plugin not booted!");
-        log(level, self.id(), msg);
-    }
-    fn log_error(&self, msg: &str) {
-        self.log(&3, msg);
-    }
-    fn log_info(&self, msg: &str) {
-        self.log(&1, msg);
-    }
-
-    fn _config_get(&self, key: &str) -> Option<String> {
-        let config = self.config.get().expect("Plugin not booted!");
-        config.get(key)
-    }
-
-    /// Asynchronously send an event to the core.
-    async fn send_event(&self, event_type: &str, payload: Option<HashMap<String, EventValue>>) {
-        let event = Event {
-            id: Uuid::new_v4(),
-            source: self.id().to_string(),
-            event_type: event_type.to_string(),
-            payload: payload,
-        };
-
-        let _ = self.event_tx().send(event).await;
-    }
-
-    /// Helper function for sending an message-event
-    async fn send_message(&self, message: String) {
-        let mut payload = HashMap::new();
-        payload.insert("message".to_string(), EventValue::String(message));
-        self.send_event("message", Some(payload)).await;
+    /// Internal helper to retrieve the plugin context.   
+    fn ctx(&self) -> &PluginContext {
+        self.context.get().expect("Plugin not booted!")
     }
 
     /// Registers all API bindings this plugin wants to expose to the Lua runtime environment.
@@ -74,6 +33,7 @@ impl DummyPlugin {
 
     /// Binds the `ping` function to Lua,
     /// letting scripts print messages to standard output.
+    /// todo: put into external file
     fn register_script_ping(&self, script_registry: &mut ScriptRegistry<'_>) {
         script_registry.register_function("ping", |_lua, msg: String| {
             println!("Ping: {}", msg.as_str());
@@ -85,10 +45,12 @@ impl DummyPlugin {
     async fn handle_input(&self, input: &str) {
         match input {
             "exit" => {
-                self.send_event("killSignal", None).await;
+                self.ctx().send_event("shutdown", None).await;
             }
             _ => {
-                self.send_message(input.to_string()).await;
+                let mut payload = HashMap::new();
+                payload.insert("message".to_string(), EventValue::String(input.to_string()));
+                self.ctx().send_event("message", Some(payload)).await;
             }
         }
     }
@@ -104,17 +66,13 @@ impl Plugin for DummyPlugin {
     /// Initializes the plugin.
     async fn boot<'lua>(
         &self,
-        config: PluginConfig,
-        log: LogFn,
-        event_tx: EventTx,
+        context: PluginContext,
         script_registry: &mut ScriptRegistry<'_>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let _ = self.config.set(config).map_err(|_| "config already set!")?;
-        let _ = self.log.set(log).map_err(|_| "Logger already set!")?;
         let _ = self
-            .event_tx
-            .set(event_tx)
-            .map_err(|_| "Event-Channel already set!")?;
+            .context
+            .set(context)
+            .map_err(|_| "Context already set!")?;
 
         self.register_scripts(script_registry);
 
@@ -122,7 +80,7 @@ impl Plugin for DummyPlugin {
     }
     /// starts main loop
     async fn run(&self) {
-        self.log_info("Dummy plugin started.");
+        self.ctx().log_info("Dummy plugin started.");
 
         let stdin = tokio::io::stdin();
         let mut reader = BufReader::new(stdin);
@@ -135,7 +93,7 @@ impl Plugin for DummyPlugin {
             tokio::select! {
                 // token to exit main loop
                 _ = self.cancel_token.cancelled() => {
-                    self.log_info("initiatiing shutdown...");
+                    self.ctx().log_info("initiatiing shutdown...");
                     break;
                 }
 
@@ -152,7 +110,7 @@ impl Plugin for DummyPlugin {
                         }
 
                         Err(e) => {
-                            self.log_error(&format!("error on reading from stdin: {}", e));
+                            self.ctx().log_error(&format!("error on reading from stdin: {}", e));
                             break;
                         }
                     }
@@ -163,7 +121,7 @@ impl Plugin for DummyPlugin {
 
     /// cancel main loop and gracefully shutdown this plugin    
     async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error>> {
-        self.log_info("shutdown");
+        self.ctx().log_info("shutdown");
         self.cancel_token.cancel();
 
         Ok(())

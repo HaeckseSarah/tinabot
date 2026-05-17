@@ -3,4 +3,4 @@ function onMessage(event)
 	p.dummy.ping(event.message)
 end
 
-t.on("message", onMessage)
+t.on("dummy.message", onMessage)

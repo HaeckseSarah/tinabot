@@ -1,13 +1,11 @@
-use super::functions;
 use crate::event::Registry;
 use crate::logger::LogLevel;
 use crate::lua::Sandbox;
 use crate::{Config, Logger};
-use mlua::{Function, Lua, LuaOptions, RegistryKey, StdLib, Table, Value};
-use std::collections::HashMap;
+use mlua::{Lua, LuaOptions, RegistryKey, StdLib, Table};
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tina_plugin_api::ScriptRegistry;
 
 pub struct LuaCallback {

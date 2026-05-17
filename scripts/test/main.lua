@@ -4,4 +4,4 @@ function onMessage(event)
 	print_r(event, "  ")
 end
 
-t.on("message", onMessage)
+t.on("dummy.message", onMessage)
