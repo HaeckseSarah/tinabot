@@ -1,4 +1,3 @@
-use std::sync::Arc;
 mod cli;
 mod config;
 mod kernel;
@@ -11,6 +10,7 @@ use crate::kernel::Kernel;
 use crate::logger::Logger;
 
 use clap::Parser;
+use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

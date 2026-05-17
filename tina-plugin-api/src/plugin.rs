@@ -5,9 +5,34 @@ use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 
 // Callback functions provided by the kernel
-pub type ConfigLookup = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
+//pub type ConfigLookup = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
 pub type LogFn = Arc<dyn Fn(&i32, &str, &str) + Send + Sync>; // (Level, Target, Message)
 pub type EventTx = Sender<Event>;
+
+/// A namespaced configuration proxy
+#[derive(Clone)]
+pub struct PluginConfig {
+    plugin_id: String,
+    global_lookup: Arc<dyn Fn(&str) -> Option<String> + Send + Sync>,
+}
+
+impl PluginConfig {
+    pub fn new(
+        plugin_id: &str,
+        global_lookup: Arc<dyn Fn(&str) -> Option<String> + Send + Sync>,
+    ) -> Self {
+        Self {
+            plugin_id: plugin_id.to_uppercase(),
+            global_lookup,
+        }
+    }
+
+    /// Requesting "VAR" searches for "TINA_{PLUGIN_ID}_VAR".
+    pub fn get(&self, key: &str) -> Option<String> {
+        let namespaced_key = format!("TINA_{}_{}", self.plugin_id, key.to_uppercase());
+        (self.global_lookup)(&namespaced_key)
+    }
+}
 
 /// The basic trait that all native plugins must implement.
 #[async_trait]
@@ -19,7 +44,7 @@ pub trait Plugin: Send + Sync {
     /// initialize plugin and register script functions
     async fn boot<'lua>(
         &self,
-        config_get: ConfigLookup,
+        config: PluginConfig,
         log: LogFn,
         event_tx: EventTx,
         script_registry: &mut ScriptRegistry<'_>,

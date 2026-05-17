@@ -3,7 +3,7 @@ use crate::logger::{LogLevel, Logger};
 use crate::lua::LuaWrapper;
 use dummy_plugin::DummyPlugin;
 use std::sync::Arc;
-use tina_plugin_api::{ConfigLookup, Event, LogFn, Plugin};
+use tina_plugin_api::{Event, LogFn, Plugin, PluginConfig};
 use tokio::sync::{Mutex, OnceCell, RwLock, mpsc};
 
 pub struct Kernel {
@@ -46,7 +46,9 @@ impl Kernel {
         let mut booted_plugins: Vec<Arc<dyn Plugin>> = Vec::new();
 
         let config_clone = self.config.clone();
-        let config_lookup: ConfigLookup = Arc::new(move |key| config_clone.get(key));
+        let config_lookup = Arc::new(move |key: &str| {
+            config_clone.get(key) // Gibt Option<String>
+        });
 
         let logger_clone = self.logger.clone();
         let log_fn: LogFn = Arc::new(move |level, target, message| {
@@ -58,9 +60,12 @@ impl Kernel {
         let dummy_plugin = DummyPlugin::new();
         let mut dummy_script_registry = self.lua.create_registry(dummy_plugin.id());
 
+        // 2. Den Namespaced-Schild speziell für das Dummy-Plugin bauen
+        let dummy_config = PluginConfig::new(dummy_plugin.id(), config_lookup);
+
         dummy_plugin
             .boot(
-                config_lookup.clone(),
+                dummy_config.clone(),
                 log_fn.clone(),
                 self.get_event_tx().clone(),
                 &mut dummy_script_registry,

@@ -1,4 +1,4 @@
-use tina_plugin_api::{ConfigLookup, Event, EventTx, EventValue, LogFn, Plugin, ScriptRegistry};
+use tina_plugin_api::{Event, EventTx, EventValue, LogFn, Plugin, PluginConfig, ScriptRegistry};
 
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 /// A plugin used for testing
 pub struct DummyPlugin {
-    config_get: OnceCell<ConfigLookup>,
+    config: OnceCell<PluginConfig>,
     log: OnceCell<LogFn>,
     event_tx: OnceCell<EventTx>,
     cancel_token: CancellationToken,
@@ -19,7 +19,7 @@ impl DummyPlugin {
     /// Creates a new uninitialized instance
     pub fn new() -> Self {
         Self {
-            config_get: OnceCell::new(),
+            config: OnceCell::new(),
             log: OnceCell::new(),
             event_tx: OnceCell::new(),
             cancel_token: CancellationToken::new(),
@@ -99,15 +99,12 @@ impl Plugin for DummyPlugin {
     /// Initializes the plugin.
     async fn boot<'lua>(
         &self,
-        config_get: ConfigLookup,
+        config: PluginConfig,
         log: LogFn,
         event_tx: EventTx,
         script_registry: &mut ScriptRegistry<'_>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let _ = self
-            .config_get
-            .set(config_get)
-            .map_err(|_| "config already set!")?;
+        let _ = self.config.set(config).map_err(|_| "config already set!")?;
         let _ = self.log.set(log).map_err(|_| "Logger already set!")?;
         let _ = self
             .event_tx
