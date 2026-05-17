@@ -1,3 +1,5 @@
-mod lua_wrapper;
+mod sandbox;
+mod wrapper;
 
-pub use self::lua_wrapper::LuaWrapper;
+pub use self::sandbox::Sandbox;
+pub use self::wrapper::Wrapper;

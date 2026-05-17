@@ -1,6 +1,6 @@
 use crate::Config;
 use crate::logger::{LogLevel, Logger};
-use crate::lua::LuaWrapper;
+use crate::lua::Wrapper;
 use dummy_plugin::DummyPlugin;
 use std::sync::Arc;
 use tina_plugin_api::{Event, LogFn, Plugin, PluginConfig};
@@ -12,7 +12,7 @@ pub struct Kernel {
     event_rx: Mutex<Option<mpsc::Receiver<Event>>>,
     event_tx: OnceCell<mpsc::Sender<Event>>,
     plugins: RwLock<Vec<Arc<dyn Plugin>>>,
-    lua: LuaWrapper,
+    lua: Wrapper,
 }
 
 impl Kernel {
@@ -23,7 +23,7 @@ impl Kernel {
             event_rx: Mutex::new(None),
             event_tx: OnceCell::new(),
             plugins: RwLock::new(Vec::new()),
-            lua: LuaWrapper::new(config.clone(), logger.clone()),
+            lua: Wrapper::new(config.clone(), logger.clone()),
         }
     }
 
@@ -123,7 +123,7 @@ impl Kernel {
         let mut plugins_write = self.plugins.write().await;
         *plugins_write = booted_plugins;
 
-        self.lua.load_scripts()?;
+        self.lua.load_scripts().await?;
         Ok(())
     }
 
@@ -171,7 +171,7 @@ impl Kernel {
                                 "Kernel",
                                 &format!("Received event: {:?}", event),
                             );
-                            let _ = self.lua.test_lua();
+                            //let _ = self.lua.test_lua();
                         }
                     }
                 }
