@@ -1,2 +1,3 @@
 TINA_LOG_LEVEL = "info"
 TINA_LOG_FILE = "tina.log"
+TINA_SCRIPTS_PATH = "./scripts"

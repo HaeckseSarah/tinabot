@@ -16,12 +16,12 @@ pub enum EventValue {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Event {
     pub id: Uuid,
-    pub source: String,     // e.g. "twitch"
-    pub event_type: String, // e.g. "susbscription"
+    pub source: String,
+    pub event_type: String,
     pub payload: Option<HashMap<String, EventValue>>,
 }
 
-pub type ConfigLookup = Arc<dyn Fn(&str, &str) -> String + Send + Sync>;
+pub type ConfigLookup = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
 pub type LogFn = Arc<dyn Fn(&i32, &str, &str) + Send + Sync>; // (Level, target, Message)
 pub type EventTx = Sender<Event>; // Erstmal simpel als String
 

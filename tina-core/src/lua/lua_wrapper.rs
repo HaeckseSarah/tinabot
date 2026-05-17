@@ -93,7 +93,10 @@ impl LuaWrapper {
     }
 
     pub fn load_scripts(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let scripts_path = self.config.get("TINA_SCRIPTS_PATH", "./scripts");
+        let scripts_path = self
+            .config
+            .get("TINA_SCRIPTS_PATH")
+            .ok_or_else(|| "could not read TINA_SCRIPTS_PATH from config!")?;
         let path = PathBuf::from(scripts_path);
 
         if !path.exists() {

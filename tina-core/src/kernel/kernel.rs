@@ -46,8 +46,7 @@ impl Kernel {
         let mut booted_plugins: Vec<Arc<dyn Plugin>> = Vec::new();
 
         let config_clone = self.config.clone();
-        let config_lookup: ConfigLookup =
-            Arc::new(move |key, default: &str| config_clone.get(key, default));
+        let config_lookup: ConfigLookup = Arc::new(move |key| config_clone.get(key));
 
         let logger_clone = self.logger.clone();
         let log_fn: LogFn = Arc::new(move |level, target, message| {

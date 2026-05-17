@@ -17,8 +17,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     let config = Arc::new(Config::load(&args));
     let logger = Arc::new(Logger::new(
-        &config.get("TINA_LOG_LEVEL", "warn").to_string(),
-        Some(config.get("TINA_LOG_FILE", "tina.log").to_string()),
+        &config.get("TINA_LOG_LEVEL").unwrap_or("warn".to_string()),
+        config.get("TINA_LOG_FILE"),
     ));
 
     let kernel = Kernel::new(config.clone(), logger.clone());

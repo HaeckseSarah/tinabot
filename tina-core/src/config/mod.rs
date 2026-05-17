@@ -18,10 +18,7 @@ impl Config {
         Self { settings }
     }
 
-    pub fn get(&self, key: &str, default: &str) -> String {
-        self.settings
-            .get(key)
-            .cloned()
-            .unwrap_or_else(|| default.to_string())
+    pub fn get(&self, key: &str) -> Option<String> {
+        self.settings.get(key).cloned()
     }
 }
