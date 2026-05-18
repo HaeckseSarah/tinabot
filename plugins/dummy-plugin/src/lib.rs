@@ -76,6 +76,15 @@ impl Plugin for DummyPlugin {
 
         self.register_scripts(script_registry);
 
+        self.ctx().register_filter("is_admin", |val_a, val_b| {
+            println!(
+                "filter function is_admin. val_a: {:?} val_b: {:?}",
+                val_a, val_b
+            );
+
+            false
+        });
+
         Ok(())
     }
     /// starts main loop

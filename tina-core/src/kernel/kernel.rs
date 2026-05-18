@@ -4,7 +4,7 @@ use crate::logger::{LogLevel, Logger};
 use crate::lua::Wrapper;
 use dummy_plugin::DummyPlugin;
 use std::sync::Arc;
-use tina_plugin_api::{Event, LogFn, Plugin, PluginConfig, PluginContext};
+use tina_plugin_api::{Event, FilterRegistry, LogFn, Plugin, PluginConfig, PluginContext};
 use tokio::sync::{Mutex, OnceCell, RwLock, mpsc};
 
 pub struct Kernel {
@@ -55,6 +55,7 @@ impl Kernel {
         plugin: Arc<dyn Plugin>,
         config_lookup: Arc<dyn Fn(&str) -> Option<String> + Send + Sync>,
         log_fn: LogFn,
+        filter_registry: Arc<FilterRegistry>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut script_registry = self.lua.create_registry(plugin.id());
 
@@ -64,6 +65,7 @@ impl Kernel {
             plugin_config,
             self.get_event_tx().clone(),
             log_fn,
+            filter_registry.clone(),
         );
 
         // Boot starten
@@ -105,6 +107,15 @@ impl Kernel {
             logger_clone.log(log_level, target, message);
         });
 
+        let event_registry = self.lua.event_registry();
+
+        let _ = self.event_dispatcher.set(Dispatcher::new(
+            self.lua.lua_instance(),
+            event_registry,
+            self.logger.clone(),
+        ));
+        let dispatcher = self.event_dispatcher.get().expect("dispatcher not found!");
+
         // check config for enabled plugins and load
         let enabled_plugins = self.config.get_array("plugins.enabled");
         for plugin_name in enabled_plugins {
@@ -113,6 +124,7 @@ impl Kernel {
                     plugin_instance.clone(),
                     config_lookup.clone(),
                     log_fn.clone(),
+                    dispatcher.get_filter_registry(),
                 )
                 .await?;
                 // Keep the plugin alive in the local runtime vector
@@ -121,14 +133,6 @@ impl Kernel {
         }
         let mut plugins_write = self.plugins.write().await;
         *plugins_write = booted_plugins;
-
-        let event_registry = self.lua.event_registry();
-
-        let _ = self.event_dispatcher.set(Dispatcher::new(
-            self.lua.lua_instance(),
-            event_registry,
-            self.logger.clone(),
-        ));
 
         self.lua.load_scripts().await?;
         Ok(())

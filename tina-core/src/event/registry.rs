@@ -1,5 +1,5 @@
 use crate::lua::LuaCallback;
-use mlua::{Function, Lua, RegistryKey};
+use mlua::RegistryKey;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -17,37 +17,46 @@ impl Registry {
 
     pub fn register_callback(
         &self,
-        event_type: String,
+        event_pattern: String,
         script_name: String,
         func_key: RegistryKey,
+        filter_key: Option<RegistryKey>,
     ) {
         let mut cb_map = self.callbacks.lock().unwrap();
         cb_map
-            .entry(event_type)
+            .entry(event_pattern)
             .or_insert_with(Vec::new)
             .push(LuaCallback {
                 script_name,
-                function_key: func_key,
+                function_key: Arc::new(func_key),
+                filter_key: filter_key.map(Arc::new),
             });
     }
 
-    pub fn get_callbacks_for(
-        &self,
-        lua: &Lua,
-        event_type: &str,
-    ) -> mlua::Result<Vec<(String, Function)>> {
-        let cb_map: std::sync::MutexGuard<'_, HashMap<String, Vec<LuaCallback>>> =
-            self.callbacks.lock().unwrap();
+    pub fn get_callbacks_for(&self, event_type: &str) -> Vec<LuaCallback> {
+        let cb_map = self.callbacks.lock().unwrap();
+        let mut matched_callbacks = Vec::new();
 
-        let mut active_funcs = Vec::new();
-
-        if let Some(list) = cb_map.get(event_type) {
-            for cb in list {
-                let func: Function = lua.registry_value(&cb.function_key)?;
-                active_funcs.push((cb.script_name.clone(), func));
+        for (pattern, list) in cb_map.iter() {
+            if Self::match_pattern(pattern, event_type) {
+                // Dank Arc können wir die Liste jetzt einfach clonen
+                matched_callbacks.extend(list.iter().cloned());
             }
         }
 
-        Ok(active_funcs)
+        matched_callbacks
+    }
+
+    fn match_pattern(pattern: &str, event_type: &str) -> bool {
+        if pattern == event_type || pattern == "*" {
+            return true;
+        }
+        if pattern.contains('*') {
+            let parts: Vec<&str> = pattern.split('*').collect();
+            if parts.len() == 2 {
+                return event_type.starts_with(parts[0]) && event_type.ends_with(parts[1]);
+            }
+        }
+        false
     }
 }

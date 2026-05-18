@@ -1,5 +1,7 @@
+use super::{ApiValue, FilterRegistry};
 use crate::{Event, EventTx, EventValue, LogFn, PluginConfig};
 use std::collections::HashMap;
+use std::sync::Arc;
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -8,15 +10,23 @@ pub struct PluginContext {
     config: PluginConfig,
     event_tx: EventTx,
     log_fn: LogFn,
+    filter_registry: Arc<FilterRegistry>,
 }
 
 impl PluginContext {
-    pub fn new(plugin_id: &str, config: PluginConfig, event_tx: EventTx, log_fn: LogFn) -> Self {
+    pub fn new(
+        plugin_id: &str,
+        config: PluginConfig,
+        event_tx: EventTx,
+        log_fn: LogFn,
+        filter_registry: Arc<FilterRegistry>,
+    ) -> Self {
         Self {
             plugin_id: plugin_id.to_lowercase(),
             config,
             event_tx,
             log_fn,
+            filter_registry,
         }
     }
 
@@ -34,7 +44,6 @@ impl PluginContext {
         let _ = self.event_tx.send(event).await;
     }
 
-    /// Zentralisiertes Logging direkt über den Context
     pub fn log(&self, level: i32, message: &str) {
         (self.log_fn)(&level, &self.plugin_id, message);
     }
@@ -53,5 +62,17 @@ impl PluginContext {
 
     pub fn config_get(&self, key: &str) -> Option<String> {
         self.config.get(key)
+    }
+
+    pub fn register_filter<F>(&self, name: &str, filter_fn: F)
+    where
+        F: Fn(ApiValue, ApiValue) -> bool + Send + Sync + 'static,
+    {
+        let mut all_filters = self.filter_registry.filters.lock().unwrap();
+        let plugin_filters = all_filters
+            .entry(self.plugin_id.clone())
+            .or_insert_with(HashMap::new);
+
+        plugin_filters.insert(name.to_string(), Arc::new(filter_fn));
     }
 }

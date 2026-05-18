@@ -4,4 +4,4 @@ function onMessage(event)
 	p.dummy.ping(event.message)
 end
 
-t.on("dummy.message", onMessage)
+t.on("dummy.message", { { "message", "dummy.is_admin", true } }, onMessage)

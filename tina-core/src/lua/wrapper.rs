@@ -8,9 +8,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tina_plugin_api::ScriptRegistry;
 
+#[derive(Clone)]
 pub struct LuaCallback {
     pub script_name: String,
-    pub function_key: RegistryKey,
+    pub function_key: Arc<RegistryKey>,
+    pub filter_key: Option<Arc<RegistryKey>>, // Feld wieder hinzugefügt!
 }
 
 pub struct Wrapper {
