@@ -1,6 +1,5 @@
 mod cli;
 mod config;
-mod event;
 mod kernel;
 mod logger;
 mod lua;
@@ -23,6 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ));
 
     let kernel = Kernel::new(config.clone(), logger.clone());
+
     kernel.init().await?;
     kernel.run().await;
     Ok(())

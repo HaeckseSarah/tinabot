@@ -1,7 +1,10 @@
 function onMessage(event)
-	print("Hello from test2.lua")
-	t.delay(1000)
-	p.dummy.ping(event.message)
+	print("Start lua2: " .. event.message)
+	t.delay(5000)
+	print("End lua2: " .. event.message)
 end
 
-t.on("dummy.message", { { "message", "dummy.is_admin", true } }, onMessage)
+t.on("dummy.message", {
+	queue = "seq",
+	filters = {},
+}, onMessage)

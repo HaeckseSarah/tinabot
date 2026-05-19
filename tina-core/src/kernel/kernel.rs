@@ -1,20 +1,22 @@
+use super::BaseRegistry;
+use super::dispatcher::Dispatcher;
+use super::dispatcher::QueueConfig;
 use crate::Config;
-use crate::event::Dispatcher;
+use crate::kernel::plugin_helper::PluginHelper;
 use crate::logger::{LogLevel, Logger};
-use crate::lua::Wrapper;
-use dummy_plugin::DummyPlugin;
+use crate::lua::Wrapper as LuaWrapper;
+use tina_plugin_api::{LogFn, Plugin, PluginConfig, PluginContext};
+
+use std::process::exit;
 use std::sync::Arc;
-use tina_plugin_api::{Event, FilterRegistry, LogFn, Plugin, PluginConfig, PluginContext};
-use tokio::sync::{Mutex, OnceCell, RwLock, mpsc};
+use tokio::sync::OnceCell;
 
 pub struct Kernel {
     config: Arc<Config>,
     logger: Arc<Logger>,
-    event_rx: Mutex<Option<mpsc::Receiver<Event>>>,
-    event_tx: OnceCell<mpsc::Sender<Event>>,
-    plugins: RwLock<Vec<Arc<dyn Plugin>>>,
-    lua: Wrapper,
-    event_dispatcher: OnceCell<Dispatcher>,
+    plugins: Arc<BaseRegistry<dyn Plugin>>,
+    lua_wrapper: Arc<LuaWrapper>,
+    event_dispatcher: OnceCell<Arc<Dispatcher>>,
 }
 
 impl Kernel {
@@ -22,78 +24,27 @@ impl Kernel {
         Self {
             config: config.clone(),
             logger: logger.clone(),
-            event_rx: Mutex::new(None),
-            event_tx: OnceCell::new(),
-            plugins: RwLock::new(Vec::new()),
-            lua: Wrapper::new(config.clone(), logger.clone()),
+            plugins: Arc::new(BaseRegistry::new()),
+            lua_wrapper: Arc::new(LuaWrapper::new(config.clone(), logger.clone())),
             event_dispatcher: OnceCell::new(),
         }
     }
 
-    fn get_event_tx(&self) -> &mpsc::Sender<Event> {
-        self.event_tx.get().expect("Event channel not initialized!")
+    fn event_dispatcher(&self) -> Arc<Dispatcher> {
+        self.event_dispatcher
+            .get()
+            .expect("dispatcher not found!")
+            .clone()
     }
 
-    fn create_plugin_instance(&self, name: &str) -> Option<Arc<dyn Plugin>> {
-        match name.to_lowercase().trim() {
-            "dummy" => Some(Arc::new(DummyPlugin::new())),
-            // "twitch" => Some(Arc::new(TwitchPlugin::new())),
-            // "obs" => Some(Arc::new(ObsPlugin::new())),
-            _ => {
-                self.logger.log(
-                    LogLevel::Warn,
-                    "Kernel",
-                    &format!("Unknown plugin in configuration skipped: {}", name),
-                );
-                None
-            }
-        }
-    }
-
-    async fn boot_plugin(
-        &self,
-        plugin: Arc<dyn Plugin>,
-        config_lookup: Arc<dyn Fn(&str) -> Option<String> + Send + Sync>,
-        log_fn: LogFn,
-        filter_registry: Arc<FilterRegistry>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let mut script_registry = self.lua.create_registry(plugin.id());
-
-        let plugin_config = PluginConfig::new(plugin.id(), config_lookup);
-        let plugin_context = PluginContext::new(
-            plugin.id(),
-            plugin_config,
-            self.get_event_tx().clone(),
-            log_fn,
-            filter_registry.clone(),
-        );
-
-        // Boot starten
-        plugin.boot(plugin_context, &mut script_registry).await?;
-
-        self.lua
-            .register_functions(script_registry, Some("p"))
-            .await?;
-
-        Ok(())
-    }
-
+    /// fixme: clean up!
     pub async fn init(&self) -> Result<(), Box<dyn std::error::Error>> {
-        self.logger
-            .log(LogLevel::Info, "Kernel", "Initializing Kernel...");
+        // dispatcher
+        let dispatcher = Dispatcher::new(self.lua_wrapper.clone(), self.logger.clone());
 
-        // initialize event channels
-        let (event_tx, event_rx) = mpsc::channel::<Event>(100);
-        self.event_tx
-            .set(event_tx)
-            .map_err(|_| "Event channel already set!")?;
+        let _ = self.event_dispatcher.set(dispatcher);
 
-        let mut rx_lock = self.event_rx.lock().await;
-        *rx_lock = Some(event_rx);
-
-        // keep track of initialized plugins
-        let mut booted_plugins: Vec<Arc<dyn Plugin>> = Vec::new();
-
+        // load plugins
         // create config wrapper function for plugins
         let config_clone = self.config.clone();
         let config_lookup = Arc::new(move |key: &str| {
@@ -107,48 +58,63 @@ impl Kernel {
             logger_clone.log(log_level, target, message);
         });
 
-        let event_registry = self.lua.event_registry();
-
-        let _ = self.event_dispatcher.set(Dispatcher::new(
-            self.lua.lua_instance(),
-            event_registry,
-            self.logger.clone(),
-        ));
-        let dispatcher = self.event_dispatcher.get().expect("dispatcher not found!");
-
         // check config for enabled plugins and load
-        let enabled_plugins = self.config.get_array("plugins.enabled");
+        let enabled_plugins = PluginHelper::get_enabled_plugins(self.config.clone());
+
         for plugin_name in enabled_plugins {
-            if let Some(plugin_instance) = self.create_plugin_instance(&plugin_name) {
-                self.boot_plugin(
-                    plugin_instance.clone(),
-                    config_lookup.clone(),
+            let dispatcher = self.event_dispatcher().clone();
+            let lua_wrapper = dispatcher.get_lua_wrapper();
+
+            if let Some(plugin_instance) = PluginHelper::create_plugin_instance(&plugin_name) {
+                let mut script_registry = lua_wrapper.create_registry(plugin_instance.id());
+
+                let plugin_config = PluginConfig::new(plugin_instance.id(), config_lookup.clone());
+                let plugin_context = PluginContext::new(
+                    plugin_instance.id(),
+                    plugin_config,
+                    self.event_dispatcher().get_event_tx().clone(),
                     log_fn.clone(),
-                    dispatcher.get_filter_registry(),
-                )
-                .await?;
-                // Keep the plugin alive in the local runtime vector
-                booted_plugins.push(plugin_instance);
+                    self.event_dispatcher().get_filter_registry().clone(),
+                );
+
+                plugin_instance
+                    .boot(plugin_context, &mut script_registry)
+                    .await?;
+
+                // register lua functions
+                self.event_dispatcher()
+                    .get_lua_wrapper()
+                    .register_functions(script_registry, Some("p"))
+                    .await?;
+
+                self.plugins
+                    .add(plugin_instance.id().to_string(), plugin_instance);
             }
         }
-        let mut plugins_write = self.plugins.write().await;
-        *plugins_write = booted_plugins;
 
-        self.lua.load_scripts().await?;
+        // queues
+        self.event_dispatcher()
+            .add_queue("default".to_string(), QueueConfig { parallel: true });
+        let queues = self.config.clone().get_table::<QueueConfig>("queue");
+        for (name, conf) in queues {
+            self.event_dispatcher().add_queue(name, conf);
+        }
+
+        // load lua scripts
+        self.event_dispatcher()
+            .get_lua_wrapper()
+            .load_scripts()
+            .await?;
+
         Ok(())
     }
 
     pub async fn run(&self) {
-        let mut rx_opt = self.event_rx.lock().await;
-        let mut event_rx = rx_opt
-            .take()
-            .expect("Kernel-Receiver already started or not initialized!");
-
         // run plugins
-        let plugins_read = self.plugins.read().await;
-        for plugin in plugins_read.iter() {
-            let plugin_clone = plugin.clone();
+        let plugins_read = self.plugins.keys_values();
 
+        for (_, plugin) in plugins_read.iter() {
+            let plugin_clone = plugin.clone();
             self.logger.log(
                 LogLevel::Info,
                 "Kernel",
@@ -160,41 +126,7 @@ impl Kernel {
             });
         }
 
-        let dispatcher = self.event_dispatcher.get().expect("dispatcher not found!");
-
-        self.logger
-            .log(LogLevel::Info, "Kernel", "Running Kernel...");
-
-        loop {
-            tokio::select! {
-                Some(event) = event_rx.recv() => {
-                    match event.event_type.as_str() {
-                        "dummy.shutdown" => {
-                            self.logger.log(
-                                LogLevel::Debug,
-                                "Kernel",
-                                &format!("Received killSignal from: {}", event.source),
-                            );
-                            break;
-                        }
-                        _ => {
-                            self.logger.log(
-                                LogLevel::Debug,
-                                "Kernel",
-                                &format!("Received event: {:?}", event),
-                            );
-                            let _ = dispatcher.dispatch(event).await;
-                        }
-                    }
-                }
-                _ = tokio::signal::ctrl_c() => {
-                    self.logger.log(LogLevel::Info, "Kernel", "ctrl+c detected. Shuting down...");
-                    break; // exit main loop
-                }
-
-                else => break,
-            }
-        }
+        self.event_dispatcher().run().await;
 
         if let Err(e) = self.shutdown().await {
             self.logger.log(
@@ -206,28 +138,6 @@ impl Kernel {
     }
 
     pub async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error>> {
-        self.logger
-            .log(LogLevel::Info, "Kernel", "stopping all plugins...");
-
-        let plugins_read = self.plugins.read().await;
-
-        for plugin in plugins_read.iter() {
-            self.logger.log(
-                LogLevel::Info,
-                "Kernel",
-                &format!("Call shutdown() on plugin: {}", plugin.id()),
-            );
-
-            if let Err(e) = plugin.shutdown().await {
-                self.logger.log(
-                    LogLevel::Error,
-                    "Kernel",
-                    &format!("Plugin '{}' error on shutdown: {:?}", plugin.id(), e),
-                );
-            }
-        }
-
-        self.logger.log(LogLevel::Info, "Kernel", "Bye Bye ");
         Ok(())
     }
 }

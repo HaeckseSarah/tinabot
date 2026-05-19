@@ -1,49 +1,52 @@
-use crate::event::Registry;
+use super::Sandbox;
+use crate::kernel::Dispatcher;
 use crate::logger::LogLevel;
-use crate::lua::Sandbox;
 use crate::{Config, Logger};
-use mlua::{Lua, LuaOptions, RegistryKey, StdLib, Table};
+use mlua::{
+    FromLua, Function, Lua, LuaOptions, LuaSerdeExt, RegistryKey, StdLib, Table, Thread, Value,
+};
+use mlua::{IntoLua, Result as LuaResult};
+use serde::Serialize;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tina_plugin_api::ScriptRegistry;
-
-#[derive(Clone)]
-pub struct LuaCallback {
-    pub script_name: String,
-    pub function_key: Arc<RegistryKey>,
-    pub filter_key: Option<Arc<RegistryKey>>, // Feld wieder hinzugefügt!
-}
+use tokio::sync::OnceCell;
 
 pub struct Wrapper {
     lua: Lua,
     config: Arc<Config>,
     logger: Arc<Logger>,
-    event_registry: Registry,
+    dispatcher: OnceCell<Arc<Dispatcher>>,
 }
 
 impl Wrapper {
     pub fn new(config: Arc<Config>, logger: Arc<Logger>) -> Self {
+        // todo: implement unsafe mode in config?
         let safe_libs = StdLib::TABLE | StdLib::STRING | StdLib::MATH | StdLib::UTF8;
         let lua = Lua::new_with(safe_libs, LuaOptions::default()).unwrap();
-        let event_registry = Registry::new();
 
-        let wrapper = Self {
+        Self {
             lua: lua,
             config,
             logger,
-            event_registry,
-        };
-
-        wrapper.register_core_api().unwrap();
-        wrapper
+            dispatcher: OnceCell::new(),
+        }
     }
 
-    pub fn event_registry(&self) -> Registry {
-        self.event_registry.clone()
+    pub fn set_dispatcher(&self, dispatcher: Arc<Dispatcher>) {
+        let _ = self.dispatcher.set(dispatcher);
+        let _ = self.register_core_api();
     }
 
-    pub fn lua_instance(&self) -> Lua {
+    fn dispatcher(&self) -> Arc<Dispatcher> {
+        self.dispatcher
+            .get()
+            .expect("dispatcher not initialized!")
+            .clone()
+    }
+
+    pub fn get_lua(&self) -> Lua {
         self.lua.clone()
     }
 
@@ -143,7 +146,7 @@ impl Wrapper {
         Ok(())
     }
 
-    fn register_core_api(&self) -> mlua::Result<()> {
+    fn register_core_api(&self) -> LuaResult<()> {
         let globals = self.lua.globals();
 
         let tina_table: Table = if globals.contains_key("t")? {
@@ -157,10 +160,39 @@ impl Wrapper {
         super::functions::register_all(
             &self.lua,
             &tina_table,
-            self.event_registry.clone(),
+            self.dispatcher().get_event_handler_registry(),
             self.logger.clone(),
         )?;
 
         Ok(())
+    }
+
+    pub fn to_value<'a, T>(&self, t: &'a T) -> LuaResult<Value>
+    where
+        T: Serialize + ?Sized,
+    {
+        self.lua.to_value(t)
+    }
+
+    pub fn create_registry_value<T>(&self, t: T) -> Result<mlua::RegistryKey, mlua::Error>
+    where
+        T: IntoLua,
+    {
+        self.lua.create_registry_value(t)
+    }
+    pub fn registry_value<T>(&self, key: &RegistryKey) -> mlua::Result<T>
+    where
+        T: FromLua,
+    {
+        // Wir reichen die Referenz auf den Key weiter
+        self.lua.registry_value(key)
+    }
+
+    pub fn create_table(&self) -> LuaResult<Table> {
+        self.lua.create_table()
+    }
+
+    pub fn create_thread(&self, func: Function) -> Thread {
+        self.get_lua().create_thread(func).unwrap()
     }
 }
