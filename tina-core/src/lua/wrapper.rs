@@ -22,7 +22,7 @@ pub struct Wrapper {
 
 impl Wrapper {
     pub fn new(config: Arc<Config>, logger: Arc<Logger>) -> Self {
-        // todo: implement unsafe mode in config?
+        // todo: let user choose to use "unsafe" lua?
         let safe_libs = StdLib::TABLE | StdLib::STRING | StdLib::MATH | StdLib::UTF8;
         let lua = Lua::new_with(safe_libs, LuaOptions::default()).unwrap();
 
@@ -77,7 +77,7 @@ impl Wrapper {
             let parts: Vec<&str> = name.split('.').collect();
 
             self.logger.log(
-                LogLevel::Info,
+                LogLevel::Debug,
                 "Lua",
                 &format!("register lua function: '{}'", name),
             );
@@ -88,7 +88,6 @@ impl Wrapper {
 
             let func_name = parts.last().unwrap().to_string();
 
-            // get/build namespace
             let namespace_parts = &parts[..parts.len() - 1];
             let mut current_table = parent_table.clone();
 
@@ -180,11 +179,11 @@ impl Wrapper {
     {
         self.lua.create_registry_value(t)
     }
+
     pub fn registry_value<T>(&self, key: &RegistryKey) -> mlua::Result<T>
     where
         T: FromLua,
     {
-        // Wir reichen die Referenz auf den Key weiter
         self.lua.registry_value(key)
     }
 

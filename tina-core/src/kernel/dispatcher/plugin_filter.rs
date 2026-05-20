@@ -11,20 +11,17 @@ impl PluginFilterMatcher {
         filter_val: Value,
         registry: &Arc<FilterRegistry>,
     ) -> bool {
-        // Operator zerlegen bei "dummy.is_admin" -> ("dummy", "is_admin")
+        // Operator "foo.bar" -> ("foo", "bar")
         if let Some(dot_idx) = operator.find('.') {
             let (p_id, filter_name) = operator.split_at(dot_idx);
-            let filter_name = &filter_name[1..]; // Punkt abschneiden
+            let filter_name = &filter_name[1..];
 
-            // mLua-Werte in mLua-freie ApiValues konvertieren
             let api_field_val = Self::to_api_value(payload_val);
             let api_expected_val = Self::to_api_value(filter_val);
 
-            // In der Registry nach der passenden Rust-Closure suchen
             let all_filters = registry.filters.lock().unwrap();
             if let Some(plugin_map) = all_filters.get(p_id) {
                 if let Some(rust_filter_closure) = plugin_map.get(filter_name) {
-                    // Native Rust-Closure ausführen
                     return rust_filter_closure(api_field_val, api_expected_val);
                 }
             }

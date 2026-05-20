@@ -1,6 +1,7 @@
+use crate::Logger;
+use crate::logger::LogLevel;
 use crate::lua::Wrapper as LuaWrapper;
-use crate::{Logger, logger};
-use mlua::{Function, RegistryKey, Table, Value};
+use mlua::{Function, RegistryKey, Table};
 use serde::Deserialize;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -43,8 +44,9 @@ impl ActionQueue {
         self.notify.notify_one();
     }
 
-    pub async fn run(self: Arc<Self>, lua: Arc<LuaWrapper>) {
+    pub async fn run(self: Arc<Self>, lua: Arc<LuaWrapper>, logger: Arc<Logger>) {
         loop {
+            let log = logger.clone();
             let l = lua.clone();
 
             let next_task = {
@@ -54,10 +56,12 @@ impl ActionQueue {
 
             if let Some(task) = next_task {
                 if self.is_parallel {
-                    tokio::spawn(async move { if let Err(e) = Self::execute(task, l.clone()) {} });
+                    tokio::spawn(async move {
+                        if let Err(_e) = Self::execute(task, l.clone(), log.clone()) {}
+                    });
                 } else {
-                    if let Err(e) = Self::execute(task, l.clone()) {
-                        eprintln!("Err in sequential queue: {:?}", e);
+                    if let Err(e) = Self::execute(task, l.clone(), log.clone()) {
+                        logger.log(LogLevel::Error, "Queue", &format!("Err in queue {:?}", e));
                     }
                 }
             } else {
@@ -66,7 +70,7 @@ impl ActionQueue {
         }
     }
 
-    fn execute(task: ScriptTask, lua: Arc<LuaWrapper>) -> mlua::Result<()> {
+    fn execute(task: ScriptTask, lua: Arc<LuaWrapper>, logger: Arc<Logger>) -> mlua::Result<()> {
         let func: Function = lua.registry_value(&task.callback)?;
         let co = lua.create_thread(func);
 
@@ -81,10 +85,8 @@ impl ActionQueue {
                     args = yielded_value;
                 }
                 Err(e) => {
-                    eprintln!(
-                        "[Lua Error] Fehler während der Coroutine-Ausführung: {:?}",
-                        e
-                    );
+                    logger.log(LogLevel::Error, "Queue", &format!("Lua Error: {:?}", e));
+                    eprintln!("Lua Error: {:?}", e);
                     return Err(e);
                 }
             }
@@ -93,11 +95,11 @@ impl ActionQueue {
         Ok(())
     }
 
-    pub fn len(&self) -> usize {
+    pub fn _len(&self) -> usize {
         self.tasks.lock().unwrap().len()
     }
 
-    pub fn clear(&self) {
+    pub fn _clear(&self) {
         self.tasks.lock().unwrap().clear();
     }
 }

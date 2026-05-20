@@ -5,7 +5,7 @@ use tokio::sync::Mutex;
 
 #[derive(Clone, Debug)]
 pub struct EventHandler {
-    pub script_name: String,
+    pub script_name: String, //todo
     pub function: Arc<RegistryKey>,
     pub filter: Arc<Option<RegistryKey>>,
     pub queue: String,

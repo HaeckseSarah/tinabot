@@ -18,10 +18,7 @@ impl Config {
         let mut builder =
             ConfigBuilder::builder().add_source(File::with_name(&config_path).required(false));
 
-        // =================================================================
         // OVERRIDES
-        // =================================================================
-
         if let Ok(env_script_path) = std::env::var("TINA_SCRIPT_PATH") {
             builder = builder
                 .set_override("script_path", env_script_path)

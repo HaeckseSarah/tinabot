@@ -31,7 +31,7 @@ impl CoreFilterMatcher {
                 if !plugin_matched {
                     return Ok(false);
                 }
-                continue; // Nächste Regel prüfen
+                continue;
             }
 
             if operator.contains('.') {
@@ -121,7 +121,6 @@ impl CoreFilterMatcher {
             (Value::String(s1), Value::String(s2)) => {
                 Ok(s1.to_str()?.to_lowercase() == s2.to_str()?.to_lowercase())
             }
-            // Für Nicht-Strings verhält es sich wie ein normaler EQ-Check
             _ => Self::compare_eq(a, b),
         }
     }

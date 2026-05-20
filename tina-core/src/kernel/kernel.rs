@@ -7,7 +7,6 @@ use crate::logger::{LogLevel, Logger};
 use crate::lua::Wrapper as LuaWrapper;
 use tina_plugin_api::{LogFn, Plugin, PluginConfig, PluginContext};
 
-use std::process::exit;
 use std::sync::Arc;
 use tokio::sync::OnceCell;
 
@@ -47,9 +46,7 @@ impl Kernel {
         // load plugins
         // create config wrapper function for plugins
         let config_clone = self.config.clone();
-        let config_lookup = Arc::new(move |key: &str| {
-            config_clone.get(key) // Gibt Option<String>
-        });
+        let config_lookup = Arc::new(move |key: &str| config_clone.get(key));
 
         // create log wrapper function for plugins
         let logger_clone = self.logger.clone();
@@ -64,6 +61,12 @@ impl Kernel {
         for plugin_name in enabled_plugins {
             let dispatcher = self.event_dispatcher().clone();
             let lua_wrapper = dispatcher.get_lua_wrapper();
+
+            self.logger.log(
+                LogLevel::Info,
+                "Kernel",
+                &format!("Load Plugin: '{}'", plugin_name),
+            );
 
             if let Some(plugin_instance) = PluginHelper::create_plugin_instance(&plugin_name) {
                 let mut script_registry = lua_wrapper.create_registry(plugin_instance.id());
@@ -125,6 +128,12 @@ impl Kernel {
                 plugin_clone.run().await;
             });
         }
+
+        self.logger.log(
+            LogLevel::Info,
+            "Kernel",
+            &format!("Start Event Disptatcher"),
+        );
 
         self.event_dispatcher().run().await;
 

@@ -2,7 +2,7 @@ use super::LogLevel;
 
 pub struct Logger {
     level: LogLevel,
-    log_file: Option<std::sync::Mutex<std::fs::File>>, // thread-safe
+    log_file: Option<std::sync::Mutex<std::fs::File>>,
 }
 impl Logger {
     pub fn new(level_str: &str, file_path: Option<String>) -> Self {
@@ -26,18 +26,30 @@ impl Logger {
             let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
             let reset = "\x1b[0m";
 
-            // Konsole
-            println!(
-                "{} [{}{}{}] [{}] {}",
-                timestamp,
-                level.color(),
-                level.name(),
-                reset,
-                target,
-                msg
-            );
+            // CLI
+            if level >= LogLevel::Error {
+                eprintln!(
+                    "{} [{}{}{}] [{}] {}",
+                    timestamp,
+                    level.color(),
+                    level.name(),
+                    reset,
+                    target,
+                    msg
+                );
+            } else {
+                println!(
+                    "{} [{}{}{}] [{}] {}",
+                    timestamp,
+                    level.color(),
+                    level.name(),
+                    reset,
+                    target,
+                    msg
+                );
+            }
 
-            // Datei
+            // write to file
             if let Some(mutex) = &self.log_file {
                 if let Ok(mut file) = mutex.lock() {
                     use std::io::Write;

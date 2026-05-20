@@ -2,7 +2,6 @@ use crate::kernel::EventHandlerRegistry;
 use mlua::{Lua, RegistryKey, Table, Value};
 use std::sync::Arc;
 
-// Der Funktionsname wurde an deine Modulstruktur (on::register) angepasst
 pub fn register(
     lua: &Lua,
     table: &Table,
@@ -28,7 +27,6 @@ pub fn register(
                 }
             };
 
-            // Das optionale Argument (Filter oder Config-Tabelle) parsen
             if let Value::Table(t) = options.clone() {
                 if t.contains_key("queue")? || t.contains_key("filters")? {
                     // Es ist das neue Config-Objekt!

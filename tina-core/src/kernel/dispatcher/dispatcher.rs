@@ -4,7 +4,7 @@ use crate::kernel::dispatcher::queue::ActionQueue;
 use crate::kernel::{BaseRegistry, EventHandlerRegistry};
 use crate::logger::{LogLevel, Logger};
 use crate::lua::Wrapper as LuaWrapper;
-use mlua::{Function, Table, Value};
+use mlua::{Table, Value};
 use std::sync::Arc;
 use tina_plugin_api::Event;
 use tina_plugin_api::FilterRegistry;
@@ -23,7 +23,7 @@ pub struct Dispatcher {
 impl Dispatcher {
     pub fn new(lua_wrapper: Arc<LuaWrapper>, logger: Arc<Logger>) -> Arc<Self> {
         let (event_tx, event_rx) = mpsc::channel::<Event>(100);
-        let d = Arc::new(Self {
+        let dsptchr = Arc::new(Self {
             lua_wrapper: lua_wrapper.clone(),
             logger,
             event_rx: Mutex::new(event_rx),
@@ -33,8 +33,8 @@ impl Dispatcher {
             queue_registry: Arc::new(BaseRegistry::new()),
         });
 
-        lua_wrapper.set_dispatcher(d.clone());
-        d
+        lua_wrapper.set_dispatcher(dsptchr.clone());
+        dsptchr
     }
 
     pub fn get_event_tx(&self) -> &mpsc::Sender<Event> {
@@ -53,12 +53,26 @@ impl Dispatcher {
     }
 
     pub fn add_queue(&self, name: String, config: QueueConfig) {
+        self.logger.log(
+            LogLevel::Debug,
+            "Dispatcher",
+            &format!("queue '{}' registered", name),
+        );
         let q = ActionQueue::new(config.parallel);
         self.queue_registry.add(name, q);
     }
 
     pub async fn handle_event(&self, event: Event) -> Result<(), Box<dyn std::error::Error>> {
         let matched_callbacks = self.event_handler_registry.get(&event.event_type).await;
+        self.logger.log(
+            LogLevel::Debug,
+            "Dispatcher",
+            &format!(
+                "Event '{}' catched. found callbacks {:?}",
+                event.event_type, matched_callbacks
+            ),
+        );
+
         println!("{:?}", matched_callbacks);
 
         if matched_callbacks.is_empty() {
@@ -72,28 +86,23 @@ impl Dispatcher {
         };
 
         for cb in matched_callbacks {
-            let func: Function = self.lua_wrapper.registry_value(&cb.function)?;
-
             if let Some(filter_key) = cb.filter.as_ref() {
                 let filter_table: mlua::Table = self.lua_wrapper.registry_value(filter_key)?;
                 if !CoreFilterMatcher::eval(&filter_table, &payload, &self.get_filter_registry())? {
                     continue;
                 }
             }
-            // Payload isolieren und Callback abfeuern
+
             let payload_clone = self.lua_wrapper.create_table()?;
             for pair in payload.pairs::<Value, Value>() {
                 let (k, v) = pair?;
                 payload_clone.set(k, v)?;
             }
 
-            /////////////////////////////////////////////////////////////////
-
-            println!("Queue: {}", cb.queue);
             if let Some(action_queue) = self.queue_registry.get(&cb.queue) {
                 action_queue.add(cb.function, payload_clone);
             } else {
-                println!("BB"); //fixme return error!
+                return Err(Box::from(format!("Undefined Queue '{}'", cb.queue)));
             }
         }
 
@@ -106,8 +115,9 @@ impl Dispatcher {
         for (_, queue) in self.queue_registry.keys_values() {
             let q = queue.clone();
             let l = self.get_lua_wrapper().clone();
+            let log = self.logger.clone();
             tokio::spawn(async move {
-                q.run(l).await;
+                q.run(l, log.clone()).await;
             });
         }
 
@@ -117,8 +127,8 @@ impl Dispatcher {
                     match event.event_type.as_str() {
                         "dummy.shutdown" => {
                             self.logger.log(
-                                LogLevel::Debug,
-                                "Kernel",
+                                LogLevel::Info,
+                                "Dispatcher",
                                 &format!("Received killSignal from: {}", event.source),
                             );
                             break;
@@ -126,7 +136,7 @@ impl Dispatcher {
                         _ => {
                             self.logger.log(
                                 LogLevel::Debug,
-                                "Kernel",
+                                "Dispatcher",
                                 &format!("Received event: {:?}", event),
                             );
                             let _ = self.handle_event(event).await;
@@ -134,7 +144,7 @@ impl Dispatcher {
                     }
                 }
                 _ = tokio::signal::ctrl_c() => {
-                    self.logger.log(LogLevel::Info, "Kernel", "ctrl+c detected. Shuting down...");
+                    self.logger.log(LogLevel::Info, "Dispatcher", "ctrl+c detected. Shuting down...");
                     break; // exit main loop
                 }
 
