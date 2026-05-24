@@ -147,6 +147,18 @@ impl Kernel {
     }
 
     pub async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error>> {
+        self.plugins.keys_values().iter().for_each(|element| {
+            let (_, plugin) = element.clone();
+            self.logger.log(
+                LogLevel::Info,
+                "Kernel",
+                &format!("Shutdown Plugin: {}", plugin.id()),
+            );
+
+            tokio::spawn(async move {
+                plugin.shutdown().await.unwrap();
+            });
+        });
         Ok(())
     }
 }
