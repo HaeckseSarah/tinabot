@@ -14,10 +14,10 @@ pub struct DummyPlugin {
 
 impl DummyPlugin {
     /// Creates a new uninitialized instance
-    pub fn new() -> Self {
+    pub fn new(cancel_token: CancellationToken) -> Self {
         Self {
             context: OnceCell::new(),
-            cancel_token: CancellationToken::new(),
+            cancel_token,
         }
     }
 
@@ -102,7 +102,8 @@ impl Plugin for DummyPlugin {
             tokio::select! {
                 // token to exit main loop
                 _ = self.cancel_token.cancelled() => {
-                    self.ctx().log_info("initiatiing shutdown...");
+                    self.ctx().log_info("initiating shutdown...");
+                    self.shutdown().await.unwrap();
                     break;
                 }
 
@@ -130,9 +131,6 @@ impl Plugin for DummyPlugin {
 
     /// cancel main loop and gracefully shutdown this plugin    
     async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error>> {
-        self.ctx().log_info("shutdown");
-        self.cancel_token.cancel();
-
         Ok(())
     }
 }

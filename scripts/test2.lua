@@ -6,5 +6,5 @@ end
 
 t.on("dummy.message", {
 	queue = "seq",
-	filters = {},
+	filters = {{"message", "starts_with","!"}},
 }, onMessage)

@@ -68,7 +68,10 @@ impl Kernel {
                 &format!("Load Plugin: '{}'", plugin_name),
             );
 
-            if let Some(plugin_instance) = PluginHelper::create_plugin_instance(&plugin_name) {
+            if let Some(plugin_instance) = PluginHelper::create_plugin_instance(
+                &plugin_name,
+                dispatcher.get_cancellation_token(),
+            ) {
                 let mut script_registry = lua_wrapper.create_registry(plugin_instance.id());
 
                 let plugin_config = PluginConfig::new(plugin_instance.id(), config_lookup.clone());
@@ -96,8 +99,11 @@ impl Kernel {
         }
 
         // queues
+        self.logger
+            .log(LogLevel::Info, "Kernel", &format!("Create Queue: default"));
         self.event_dispatcher()
             .add_queue("default".to_string(), QueueConfig { parallel: true });
+
         let queues = self.config.clone().get_table::<QueueConfig>("queue");
         for (name, conf) in queues {
             self.event_dispatcher().add_queue(name, conf);
@@ -147,18 +153,6 @@ impl Kernel {
     }
 
     pub async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error>> {
-        self.plugins.keys_values().iter().for_each(|element| {
-            let (_, plugin) = element.clone();
-            self.logger.log(
-                LogLevel::Info,
-                "Kernel",
-                &format!("Shutdown Plugin: {}", plugin.id()),
-            );
-
-            tokio::spawn(async move {
-                plugin.shutdown().await.unwrap();
-            });
-        });
         Ok(())
     }
 }

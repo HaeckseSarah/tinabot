@@ -9,6 +9,7 @@ use std::sync::Arc;
 use tina_plugin_api::Event;
 use tina_plugin_api::FilterRegistry;
 use tokio::sync::{Mutex, mpsc};
+use tokio_util::sync::CancellationToken;
 
 pub struct Dispatcher {
     lua_wrapper: Arc<LuaWrapper>,
@@ -18,6 +19,7 @@ pub struct Dispatcher {
     event_handler_registry: Arc<EventHandlerRegistry>,
     filter_registry: Arc<FilterRegistry>,
     queue_registry: Arc<BaseRegistry<ActionQueue>>,
+    cancellation_token: CancellationToken,
 }
 
 impl Dispatcher {
@@ -31,6 +33,7 @@ impl Dispatcher {
             event_handler_registry: Arc::new(EventHandlerRegistry::new()),
             filter_registry: Arc::new(FilterRegistry::new()),
             queue_registry: Arc::new(BaseRegistry::new()),
+            cancellation_token: CancellationToken::new(),
         });
 
         lua_wrapper.set_dispatcher(dsptchr.clone());
@@ -58,7 +61,7 @@ impl Dispatcher {
             "Dispatcher",
             &format!("queue '{}' registered", name),
         );
-        let q = ActionQueue::new(config.parallel);
+        let q = ActionQueue::new(self.get_cancellation_token(), config.parallel);
         self.queue_registry.add(name, q);
     }
 
@@ -131,6 +134,7 @@ impl Dispatcher {
                                 "Dispatcher",
                                 &format!("Received killSignal from: {}", event.source),
                             );
+                            self.cancellation_token.cancel();
                             break;
                         }
                         _ => {
@@ -145,11 +149,16 @@ impl Dispatcher {
                 }
                 _ = tokio::signal::ctrl_c() => {
                     self.logger.log(LogLevel::Info, "Dispatcher", "ctrl+c detected. Shuting down...");
+                    self.cancellation_token.cancel();
                     break; // exit main loop
                 }
 
                 else => break,
             }
         }
+    }
+
+    pub fn get_cancellation_token(&self) -> CancellationToken {
+        self.cancellation_token.child_token()
     }
 }

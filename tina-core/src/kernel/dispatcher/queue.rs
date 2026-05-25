@@ -6,6 +6,7 @@ use serde::Deserialize;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use tokio::sync::Notify;
+use tokio_util::sync::CancellationToken;
 
 pub struct ScriptTask {
     pub callback: Arc<RegistryKey>,
@@ -22,14 +23,16 @@ pub struct ActionQueue {
     is_parallel: bool,
     tasks: Mutex<VecDeque<ScriptTask>>,
     notify: Notify,
+    cancellation_token: CancellationToken,
 }
 
 impl ActionQueue {
-    pub fn new(is_parallel: bool) -> Arc<Self> {
+    pub fn new(cancellation_token: CancellationToken, is_parallel: bool) -> Arc<Self> {
         Arc::new(Self {
             is_parallel,
             tasks: Mutex::new(VecDeque::new()),
             notify: Notify::new(),
+            cancellation_token,
         })
     }
 
@@ -53,30 +56,53 @@ impl ActionQueue {
                 let mut tasks = self.tasks.lock().unwrap();
                 tasks.pop_front()
             };
+            if self.cancellation_token.is_cancelled() {
+                println!("shutdown....");
+                break;
+            }
 
             if let Some(task) = next_task {
                 if self.is_parallel {
+                    let cloned_self = self.clone();
                     tokio::spawn(async move {
-                        if let Err(_e) = Self::execute(task, l.clone(), log.clone()) {}
+                        if let Err(_e) = cloned_self.execute(task, l.clone(), log.clone()) {}
                     });
                 } else {
-                    if let Err(e) = Self::execute(task, l.clone(), log.clone()) {
+                    if let Err(e) = self.execute(task, l.clone(), log.clone()) {
                         logger.log(LogLevel::Error, "Queue", &format!("Err in queue {:?}", e));
                     }
                 }
             } else {
-                self.notify.notified().await;
+                tokio::select! {
+                    _ = self.notify.notified() => {
+                        println!("kill queue");
+                    },
+                    _ = self.cancellation_token.cancelled() => {
+                        println!("kill queue");
+                        break;
+                    }
+                }
             }
         }
     }
 
-    fn execute(task: ScriptTask, lua: Arc<LuaWrapper>, logger: Arc<Logger>) -> mlua::Result<()> {
+    // todo: improve performance
+    fn execute(
+        &self,
+        task: ScriptTask,
+        lua: Arc<LuaWrapper>,
+        logger: Arc<Logger>,
+    ) -> mlua::Result<()> {
         let func: Function = lua.registry_value(&task.callback)?;
         let co = lua.create_thread(func);
 
         let mut args = mlua::Value::Table(task.payload);
 
         loop {
+            if self.cancellation_token.is_cancelled() {
+                break;
+            }
+
             match co.resume::<mlua::Value>(args) {
                 Ok(mlua::Value::Nil) => {
                     break;
