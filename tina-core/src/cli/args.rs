@@ -4,6 +4,9 @@ use std::path::PathBuf;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct Args {
+    pub target: Option<String>,
+    pub command: Option<String>,
+
     /// Path to the configuration file (defaults to config.toml)
     #[arg(short, long, value_name = "FILE")]
     pub config: Option<PathBuf>,

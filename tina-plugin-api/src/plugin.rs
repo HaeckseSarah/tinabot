@@ -71,7 +71,7 @@ pub trait Plugin: Send + Sync {
     ) -> Result<(), Box<dyn std::error::Error>>;
 
     /// Starts the main loop of the plugin
-    async fn run(&self);
+    async fn run(&self, command: Option<String>);
 
     /// gracefully shutdown plugin.
     async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error>>;

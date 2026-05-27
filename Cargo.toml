@@ -2,6 +2,7 @@
 members = [
     "tina-plugin-api",
     "tina-core",
-    "plugins/dummy-plugin"
+    "plugins/dummy-plugin",
+    "plugins/twitch-plugin",
 ]
 resolver = "2"

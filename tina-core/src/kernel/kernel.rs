@@ -82,7 +82,6 @@ impl Kernel {
                     log_fn.clone(),
                     self.event_dispatcher().get_filter_registry().clone(),
                 );
-
                 plugin_instance
                     .boot(plugin_context, &mut script_registry)
                     .await?;
@@ -118,7 +117,47 @@ impl Kernel {
         Ok(())
     }
 
-    pub async fn run(&self) {
+    pub async fn run(&self, target: Option<String>, command: Option<String>) {
+        if let Some(trgt) = target {
+            if let Some(plugin) = self.plugins.get(&trgt) {
+                if let Some(cmd) = command {
+                    self.logger.log(
+                        LogLevel::Info,
+                        "Kernel",
+                        &format!("Run Plugin: {} with command: {}", trgt, cmd),
+                    );
+                    plugin.run(Some(cmd)).await;
+                } else {
+                    self.logger.log(
+                        LogLevel::Error,
+                        "Kernel",
+                        &format!("Command for plugin: {} missing", trgt),
+                    );
+                }
+                return;
+            } else {
+                match trgt.as_str() {
+                    "run" => {}
+                    _ => {
+                        self.logger.log(
+                            LogLevel::Error,
+                            "Kernel",
+                            &format!(
+                                "Undefined target and command: {} {}",
+                                trgt,
+                                command.unwrap()
+                            ),
+                        );
+                        return;
+                    }
+                }
+            }
+        }
+
+        self.run_main().await
+    }
+
+    async fn run_main(&self) {
         // run plugins
         let plugins_read = self.plugins.keys_values();
 
@@ -131,7 +170,7 @@ impl Kernel {
             );
 
             tokio::spawn(async move {
-                plugin_clone.run().await;
+                plugin_clone.run(None).await;
             });
         }
 
@@ -151,7 +190,6 @@ impl Kernel {
             );
         }
     }
-
     pub async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error>> {
         Ok(())
     }

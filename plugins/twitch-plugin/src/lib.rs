@@ -41,11 +41,23 @@ impl Plugin for TwitchPlugin {
             .context
             .set(context)
             .map_err(|_| "Context already set!")?;
-
+        self.ctx().log_info("booted");
         Ok(())
     }
     /// starts main loop
-    async fn run(&self) {
+    async fn run(&self, command: Option<String>) {
+        if let Some(cmd) = command {
+            match cmd.as_str() {
+                "auth" => {
+                    //todo;
+                }
+                _ => {
+                    self.ctx().log_error(&format!("unknown command: {}", cmd));
+                }
+            }
+            return;
+        }
+
         self.ctx().log_info("Twitch plugin started.");
 
         loop {

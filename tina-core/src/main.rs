@@ -24,6 +24,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let kernel = Kernel::new(config.clone(), logger.clone());
 
     kernel.init().await?;
-    kernel.run().await;
+    kernel.run(args.target, args.command).await;
     Ok(())
 }

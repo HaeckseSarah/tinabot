@@ -88,7 +88,7 @@ impl Plugin for DummyPlugin {
         Ok(())
     }
     /// starts main loop
-    async fn run(&self) {
+    async fn run(&self, _command: Option<String>) {
         self.ctx().log_info("Dummy plugin started.");
 
         let stdin = tokio::io::stdin();

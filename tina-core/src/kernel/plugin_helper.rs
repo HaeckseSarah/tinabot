@@ -4,6 +4,7 @@ use tina_plugin_api::Plugin;
 
 use dummy_plugin::DummyPlugin;
 use tokio_util::sync::CancellationToken;
+use twitch_plugin::TwitchPlugin;
 
 pub struct PluginHelper {}
 impl PluginHelper {
@@ -17,7 +18,7 @@ impl PluginHelper {
     ) -> Option<Arc<dyn Plugin>> {
         match name.to_lowercase().trim() {
             "dummy" => Some(Arc::new(DummyPlugin::new(cancellation_token.clone()))),
-            // "twitch" => Some(Arc::new(TwitchPlugin::new())),
+            "twitch" => Some(Arc::new(TwitchPlugin::new(cancellation_token.clone()))),
             // "obs" => Some(Arc::new(ObsPlugin::new())),
             _ => None,
         }
