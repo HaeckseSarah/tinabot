@@ -75,10 +75,10 @@ impl ActionQueue {
             } else {
                 tokio::select! {
                     _ = self.notify.notified() => {
-                        println!("kill queue");
+                        //
                     },
                     _ = self.cancellation_token.cancelled() => {
-                        println!("kill queue");
+                        //
                         break;
                     }
                 }

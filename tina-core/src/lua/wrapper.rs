@@ -173,7 +173,7 @@ impl Wrapper {
         self.lua.to_value(t)
     }
 
-    pub fn create_registry_value<T>(&self, t: T) -> Result<mlua::RegistryKey, mlua::Error>
+    pub fn _create_registry_value<T>(&self, t: T) -> Result<mlua::RegistryKey, mlua::Error>
     where
         T: IntoLua,
     {

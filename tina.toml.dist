@@ -3,10 +3,18 @@ level = "debug"
 file = "tina.log"
 
 [lua]
-script_path="./scripts"
+script_path = "./scripts"
 
 [plugins]
-enabled = ["dummy"]
+enabled = ["dummy", "twitch"]
 
 [plugin.dummy]
-foo = "bar"
+
+[plugin.twitch]
+# Broadcaster Username
+broadcaster_user = ""
+# Optional Bot User fall back to broadcast user
+bot_user = ""
+
+[queue.seq]
+parallel = false

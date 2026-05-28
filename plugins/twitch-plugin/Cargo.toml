@@ -10,13 +10,19 @@ async-trait = "0.1"
 tokio = { version = "1.52", features = ["full"] }
 tokio-util = "0.7"
 uuid = { version = "1.23.1", features = ["serde", "v4"] }
-reqwest = { version = "0.13", features = ["json"] }
-twitch_oauth2 = { version = "0.17", features = ["reqwest"] }
+reqwest = { version = "0.12", features = ["json"] }
+#twitch_oauth2 = { version = "0.17", features = ["reqwest"] }
 twitch_api = { version = "0.7", features = [
     "all",
+    "reqwest",
+    "client",
 ] } # fixme: select only used features
 
 keyring-core = { version = "1.0" }
+futures = "0.3"
+
+mlua = { version = "0.11", features = ["lua55", "serde"] }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 apple-native-keyring-store = { version = "1.0.0", features = [
     "keychain",

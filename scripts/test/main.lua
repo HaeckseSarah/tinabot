@@ -1,7 +1,12 @@
 function onMessage(event)
 	require("lib")
-	print("Hello from test/main.lua")
-	print_r(event, "  ")
+
+	a = p.twitch.get_channel_information(string.sub(event.message, 4))
+	print("Infos:")
+	print_r(a)
 end
 
-t.on("dummy.message", onMessage)
+t.on("dummy.message", {
+	queue = "seq",
+	filters = { { "message", "starts_with", "c? " } },
+}, onMessage)
