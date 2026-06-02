@@ -1,11 +1,19 @@
 use clap::Parser;
+use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct Args {
-    /// default config file path
-    #[arg(short, long, default_value = "tina.conf")]
-    pub config: String,
+    pub target: Option<String>,
+    pub command: Option<String>,
+
+    /// Path to the configuration file (defaults to config.toml)
+    #[arg(short, long, value_name = "FILE")]
+    pub config: Option<PathBuf>,
+
+    /// Override the TINA_SCRIPTS_PATH configuration value
+    #[arg(short, long, value_name = "DIR")]
+    pub script_path: Option<String>,
 
     /// -D foo=bar)
     #[arg(short = 'D', value_parser = parse_key_val::<String, String>)]
