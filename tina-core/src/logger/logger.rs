@@ -25,6 +25,13 @@ impl Logger {
         if level >= self.level {
             let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
             let reset = "\x1b[0m";
+            let prefix = if self.level == LogLevel::ADHD {
+                "Oh look, "
+            } else {
+                ""
+            };
+
+            let formatted = format!("{}{}", prefix, msg);
 
             // CLI
             if level >= LogLevel::Error {
@@ -35,7 +42,7 @@ impl Logger {
                     level.name(),
                     reset,
                     target,
-                    msg
+                    formatted
                 );
             } else {
                 println!(
@@ -45,7 +52,7 @@ impl Logger {
                     level.name(),
                     reset,
                     target,
-                    msg
+                    formatted
                 );
             }
 
@@ -59,7 +66,7 @@ impl Logger {
                         timestamp,
                         level.name(),
                         target,
-                        msg
+                        formatted
                     );
                 }
             }

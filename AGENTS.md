@@ -31,6 +31,7 @@ cargo run -p tinabot -- --config tina.toml -D plugin.twitch.broadcaster_user=exa
 ```
 
 - For debugging, set `log.level = "debug"` in `tina.toml`; optionally set `log.file` to capture a persistent trace.
+- For maximum foreground verbosity with human-style prefixes, set `log.level = "adhd"`.
 
 ## Runtime Flow
 1. `tina-core/src/main.rs` parses CLI args, loads config, builds `Logger`, and constructs `Kernel`.
